@@ -3,7 +3,14 @@ from src.eval import evaluate_poisson_model
 
 
 def fit_model_per_cell(
-    X, Y, cell_ids, model_class, model_kwargs=None, train_frac=0.7, val_frac=0.15
+    X,
+    Y,
+    cell_ids,
+    model_class,
+    model_kwargs=None,
+    train_frac=0.7,
+    val_frac=0.15,
+    scaler=None,
 ):
     """
     Generic function to fit ANY model per cell using the same pipeline.
@@ -41,30 +48,51 @@ def fit_model_per_cell(
         X_test = X[:, test_idx].T
         y_test = Y[test_idx]
 
-        # instantiate model
+        # Optional Scaling
+        if scaler is not None:
+            scaler_instance = scaler()
+            X_train_s = scaler_instance.fit_transform(X_train)
+            X_val_s = scaler_instance.transform(X_val)
+            X_test_s = scaler_instance.transform(X_test)
+        else:
+            scaler_instance = None
+            X_train_s, X_val_s, X_test_s = X_train, X_val, X_test
+
+        # Instantiate model
         model = model_class(**model_kwargs)
 
-        # fit
-        model.fit(X_train, y_train)
+        # Fit model
+        model.fit(X_train_s, y_train)
 
-        # predict
-        y_pred_train = model.predict(X_train)
-        y_pred_val = model.predict(X_val)
-        y_pred_test = model.predict(X_test)
+        # Predict
+        y_pred_train = model.predict(X_train_s)
+        y_pred_val = model.predict(X_val_s)
+        y_pred_test = model.predict(X_test_s)
 
-        # evaluate
+        # Evaluate
         train_eval = evaluate_poisson_model(y_train, y_pred_train)
         val_eval = evaluate_poisson_model(y_val, y_pred_val)
         test_eval = evaluate_poisson_model(y_test, y_pred_test)
 
         results[cell] = {
             "model": model,
+            "scaler": scaler_instance,
+            # evaluation
             "train": train_eval,
             "val": val_eval,
             "test": test_eval,
+            # predictions
             "y_pred_train": y_pred_train,
             "y_pred_val": y_pred_val,
             "y_pred_test": y_pred_test,
+            # true values
+            "y_train": y_train,
+            "y_val": y_val,
+            "y_test": y_test,
+            # indices
+            "train_idx": train_idx,
+            "val_idx": val_idx,
+            "test_idx": test_idx,
         }
 
     return results
