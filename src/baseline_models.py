@@ -1,7 +1,7 @@
 import numpy as np
 from sklearn.linear_model import PoissonRegressor
 from xgboost import XGBRegressor
-from model_utils import fit_model_per_cell
+from src.model_utils import fit_model_per_cell
 
 
 def fit_poisson_glm(X, Y, cell_ids, alpha=0.0, train_frac=0.7, val_frac=0.15):
