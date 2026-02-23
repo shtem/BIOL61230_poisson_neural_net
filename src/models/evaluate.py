@@ -56,6 +56,9 @@ def evaluate_poisson_model(y_true, y_pred):
 
     :return: Dictionary of evaluation metrics and PSTH figure
     """
+    # Ensure strictly positive predictions
+    y_pred = np.clip(y_pred, 1e-8, None)
+
     # core metrics
     r2 = pseudo_r2(y_true, y_pred)
     ll = poisson_log_likelihood(y_true, y_pred)
