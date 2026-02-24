@@ -18,6 +18,7 @@ def fit_poisson_nn(
     model_param_grid=None,
     trainer_param_grid=None,
     hidden_sizes=[32, 16],
+    k_folds=3,
     lr=1e-3,
     epochs=100,
     weight_decay=1e-4,
@@ -104,7 +105,7 @@ def fit_poisson_nn(
         model_class=lambda **kw: PoissonNN(n_features=X.shape[0], **kw),
         model_param_grid=model_param_grid,
         trainer_param_grid=trainer_param_grid,
-        k_folds=3,
+        k_folds=k_folds,
         scaler=scaler,
         custom_train_fn=lambda model, Xtr, ytr, Xv, yv, **tp: PoissonTrainer(
             **tp

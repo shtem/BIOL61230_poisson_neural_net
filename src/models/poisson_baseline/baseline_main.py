@@ -14,6 +14,7 @@ def fit_poisson_glm(
     grid_search=False,
     train_frac=0.7,
     val_frac=0.15,
+    k_folds=3,
 ):
     """
     Fit a Poisson GLM baseline model for each cell.
@@ -62,7 +63,7 @@ def fit_poisson_glm(
         model_class=PoissonRegressor,
         model_param_grid=model_param_grid,
         trainer_param_grid=None,  # GLM has no trainer params
-        k_folds=3,
+        k_folds=k_folds,
     )
 
     best_params = gs["best_params"]
@@ -100,6 +101,7 @@ def fit_poisson_xgboost(
     grid_search=False,
     train_frac=0.7,
     val_frac=0.15,
+    k_folds=3,
     **kwargs,
 ):
     """
@@ -165,7 +167,7 @@ def fit_poisson_xgboost(
         model_class=XGBRegressor,
         model_param_grid=model_param_grid,
         trainer_param_grid=None,  # XGB has no trainer params
-        k_folds=3,
+        k_folds=k_folds,
     )
 
     best_params = gs["best_params"]
