@@ -1,7 +1,7 @@
 import numpy as np
 from sklearn.model_selection import KFold
 from src.get_data import split_cell_data
-from src.models.evaluate import evaluate_poisson_model
+from src.models.evaluate import evaluate_poisson_model, pseudo_r2
 
 
 def fit_model_per_cell(
@@ -111,53 +111,6 @@ def fit_model_per_cell(
             results[cell]["val_losses"] = model.val_losses
 
     return results
-
-
-def cross_validate_model_per_cell(
-    X,
-    Y,
-    cell_ids,
-    model_class,
-    model_kwargs=None,
-    k_folds=3,
-    scaler=None,
-):
-    """
-    Per-cell k-fold cross-validation using pseudo-R2 as score.
-
-    Returns: dict[cell_id] -> mean CV pseudo-R2
-    """
-    if model_kwargs is None:
-        model_kwargs = {}
-
-    scores = {}
-    unique_cells = np.unique(cell_ids)
-
-    for cell in unique_cells:
-        idx = np.where(cell_ids == cell)[0]
-        y_cell = Y[idx]
-        X_cell = X[:, idx].T  # (n_time_bins, n_features)
-
-        if scaler is not None:
-            scaler_instance = scaler()
-            X_cell = scaler_instance.fit_transform(X_cell)
-
-        kf = KFold(n_splits=k_folds, shuffle=False)
-        cell_scores = []
-
-        for train_idx, val_idx in kf.split(X_cell):
-            X_train, X_val = X_cell[train_idx], X_cell[val_idx]
-            y_train, y_val = y_cell[train_idx], y_cell[val_idx]
-
-            model = model_class(**model_kwargs)
-            model.fit(X_train, y_train)
-            y_pred = model.predict(X_val)
-            eval_metrics = evaluate_poisson_model(y_val, y_pred)
-            cell_scores.append(eval_metrics["pseudo_r2"])
-
-        scores[cell] = float(np.mean(cell_scores))
-
-    return scores
 
 
 def summarise_model_results(results, model_name="Model"):

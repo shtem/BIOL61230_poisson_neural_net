@@ -95,24 +95,36 @@ def plot_ytrue_vs_ypred(
     return fig
 
 
-def compare_models_for_cell(glm_results, xgb_results, nn_results, cell, split="test"):
+def compare_models_for_cell(
+    glm_results, xgb_results, nn_results, tl_results, cell, split="test"
+):
     _set_journal_style()
-    fig, axes = plt.subplots(1, 3, figsize=(11, 3.5), sharex=True, sharey=True)
 
-    for ax, (results, name) in zip(
-        axes,
-        [
-            (glm_results, "GLM"),
-            (xgb_results, "XGBoost"),
-            (nn_results, "Neural Network"),
-        ],
-    ):
-        y_true = results[cell][f"y_{split}"]
-        y_pred = results[cell][f"y_pred_{split}"]
+    fig, axes = plt.subplots(2, 2, figsize=(8, 7), sharex=True, sharey=True)
+    axes = axes.flatten()
+
+    model_list = [
+        (glm_results, "GLM"),
+        (xgb_results, "XGBoost"),
+        (nn_results, "Neural Network"),
+        (tl_results, "Transfer Learning NN"),
+    ]
+
+    for ax, (results, name) in zip(axes, model_list):
+
+        # Transfer learning uses y_test / y_pred_test only
+        if name == "Transfer Learning NN":
+            y_true = results[cell]["y_test"]
+            y_pred = results[cell]["y_pred_test"]
+        else:
+            y_true = results[cell][f"y_{split}"]
+            y_pred = results[cell][f"y_pred_{split}"]
 
         ax.scatter(y_true, y_pred, alpha=0.4, s=10, edgecolor="none")
+
         lims = [min(y_true.min(), y_pred.min()), max(y_true.max(), y_pred.max())]
         ax.plot(lims, lims, "k--", linewidth=1)
+
         ax.set_title(f"{name} — Cell {cell}")
         ax.set_xlabel("True")
         ax.set_ylabel("Predicted")
@@ -121,21 +133,24 @@ def compare_models_for_cell(glm_results, xgb_results, nn_results, cell, split="t
     fig.tight_layout()
 
     plt.close(fig)
-
     return fig
 
 
-def compare_r2_across_cells(glm_results, xgb_results, nn_results, split="test"):
+def compare_r2_across_cells(
+    glm_results, xgb_results, nn_results, tl_results, split="test"
+):
     _set_journal_style()
     cells = sorted(glm_results.keys())
     glm_r2 = [glm_results[c][split]["pseudo_r2"] for c in cells]
     xgb_r2 = [xgb_results[c][split]["pseudo_r2"] for c in cells]
     nn_r2 = [nn_results[c][split]["pseudo_r2"] for c in cells]
+    tl_r2 = [tl_results[c][split]["pseudo_r2"] for c in cells]
 
     fig, ax = plt.subplots(figsize=(7, 3.5))
     ax.plot(cells, glm_r2, label="GLM", marker="o")
     ax.plot(cells, xgb_r2, label="XGBoost", marker="o")
     ax.plot(cells, nn_r2, label="Neural Network", marker="o")
+    ax.plot(cells, tl_r2, label="Transfer Learning NN", marker="o")
 
     ax.set_xlabel("Cell ID")
     ax.set_ylabel(f"{split.capitalize()} pseudo-R²")
