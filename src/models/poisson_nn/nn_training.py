@@ -138,6 +138,8 @@ class TransferLearningTrainer(BaseTrainer):
             weight_decay=self.weight_decay,
         )
 
+        train_losses = []
+
         for _ in range(self.epochs):
             model.train()
             optimiser.zero_grad()
@@ -151,7 +153,9 @@ class TransferLearningTrainer(BaseTrainer):
             if self.l1_lambda > 0:
                 total_loss = total_loss + self._l1_penalty(model)
 
+            train_losses.append(total_loss.item())
+
             total_loss.backward()
             optimiser.step()
 
-        return model
+        return model, train_losses

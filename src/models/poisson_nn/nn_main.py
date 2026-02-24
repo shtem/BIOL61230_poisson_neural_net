@@ -33,6 +33,13 @@ def fit_poisson_nn(
     Fit per-cell PoissonNN models, optionally with per-cell grid search.
     """
 
+    def train_fn(model, Xtr, ytr, Xv, yv, **tp):
+        trainer = PoissonTrainer(**trainer_params)
+        model, tl, vl = trainer.train(model, Xtr, ytr, Xv, yv)
+        model.train_losses = tl
+        model.val_losses = vl
+        return model
+
     # -------------------------
     # MODE A — GLOBAL PARAMS
     # -------------------------
@@ -51,13 +58,6 @@ def fit_poisson_nn(
 
         def model_class(**kw):
             return PoissonNN(n_features=X.shape[0], **model_params)
-
-        def train_fn(model, Xtr, ytr, Xv, yv, **tp):
-            trainer = PoissonTrainer(**trainer_params)
-            model, tl, vl = trainer.train(model, Xtr, ytr, Xv, yv)
-            model.train_losses = tl
-            model.val_losses = vl
-            return model
 
         results = fit_model_per_cell(
             X,
@@ -107,9 +107,7 @@ def fit_poisson_nn(
         trainer_param_grid=trainer_param_grid,
         k_folds=k_folds,
         scaler=scaler,
-        custom_train_fn=lambda model, Xtr, ytr, Xv, yv, **tp: PoissonTrainer(
-            **tp
-        ).train(model, Xtr, ytr, Xv, yv)[0],
+        custom_train_fn=train_fn,
     )
 
     best_params = gs["best_params"]
@@ -132,9 +130,7 @@ def fit_poisson_nn(
             train_frac=train_frac,
             val_frac=val_frac,
             scaler=scaler,
-            custom_train_fn=lambda m, Xtr, ytr, Xv, yv: trainer.train(
-                m, Xtr, ytr, Xv, yv
-            )[0],
+            custom_train_fn=train_fn,
         )[cell]
 
     return {
@@ -191,7 +187,8 @@ def fit_poisson_nn_transfer_learning(
 
         model = SharedHiddenPoissonNN(n_features, hidden_sizes, n_cells)
         trainer = TransferLearningTrainer(**trainer_params)
-        model = trainer.train(model, X_cells, Y_cells)
+        model, train_losses = trainer.train(model, X_cells, Y_cells)
+        model.train_losses = train_losses
 
         results = {}
         for ci, cell in enumerate(unique_cells):
@@ -239,7 +236,8 @@ def fit_poisson_nn_transfer_learning(
     # Fit final model
     model = SharedHiddenPoissonNN(n_features, best_mp["hidden_sizes"], n_cells)
     trainer = TransferLearningTrainer(**best_tp)
-    model = trainer.train(model, X_cells, Y_cells)
+    model, train_losses = trainer.train(model, X_cells, Y_cells)
+    model.train_losses = train_losses
 
     # Evaluate per cell
     results = {}
