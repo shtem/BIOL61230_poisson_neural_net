@@ -1,107 +1,68 @@
-import numpy as np
-from sklearn.model_selection import KFold
 from src.get_data import split_cell_data
-from src.models.evaluate import evaluate_poisson_model, pseudo_r2
+from src.models.evaluate import evaluate_poisson_model
 
 
 def fit_model_per_cell(
-    X,
-    Y,
-    cell_ids,
+    X_train,
+    Y_train,
+    X_val,
+    Y_val,
+    X_test,
+    Y_test,
     model_class,
     model_kwargs=None,
-    train_frac=0.7,
-    val_frac=0.15,
     scaler=None,
     custom_train_fn=None,
 ):
-    """
-    Generic function to fit ANY model per cell using the same pipeline.
-
-    :param X: Array of shape (n_features, n_time_bins) containing the input features (covariates)
-    :param Y: Array of shape (n_time_bins,) containing the target values (spike counts)
-    :param cell_ids: Array of all cell IDs
-    :param model_class: The class of the model to be fitted (e.g., PoissonRegressor, XGBRegressor)
-    :param model_kwargs: Dictionary of keyword arguments to be passed to the model constructor
-    :param train_frac: Fraction of samples to use for training (default 0.7)
-    :param val_frac: Fraction of samples to use for validation (default 0.15)
-    :param custom_train_fn: Optional function to override the default training procedure
-
-    :return: Dictionary containing fitted models, coefficients, and performance metrics for each cell
-    """
-    if model_kwargs is None:
-        model_kwargs = {}
-
     results = {}
-    splits = split_cell_data(cell_ids, train_frac, val_frac)
 
-    for cell, s in splits.items():
-        train_idx = s["train_idx"]
-        val_idx = s["val_idx"]
-        test_idx = s["test_idx"]
+    for cell in X_train.keys():
+        Xtr = X_train[cell]
+        ytr = Y_train[cell]
+        Xv = X_val[cell] if X_val is not None else None
+        yv = Y_val[cell] if Y_val is not None else None
+        Xte = X_test[cell]
+        yte = Y_test[cell]
 
-        # prepare data for this cell
-        # scikit's PoissonRegressor expects shape (n_samples, n_features) for X and (n_samples,) for y
-        # we need to transpose X to get shape (n_time_bins, n_features)
-        X_train = X[:, train_idx].T
-        y_train = Y[train_idx]
-
-        X_val = X[:, val_idx].T
-        y_val = Y[val_idx]
-
-        X_test = X[:, test_idx].T
-        y_test = Y[test_idx]
-
-        # Optional Scaling
+        # scaling
         if scaler is not None:
-            scaler_instance = scaler()
-            X_train_s = scaler_instance.fit_transform(X_train)
-            X_val_s = scaler_instance.transform(X_val)
-            X_test_s = scaler_instance.transform(X_test)
+            sc = scaler()
+            Xtr_s = sc.fit_transform(Xtr)
+            Xv_s = sc.transform(Xv) if Xv is not None else None
+            Xte_s = sc.transform(Xte)
         else:
-            scaler_instance = None
-            X_train_s, X_val_s, X_test_s = X_train, X_val, X_test
+            sc = None
+            Xtr_s, Xv_s, Xte_s = Xtr, Xv, Xte
 
-        # Instantiate model
-        model = model_class(**model_kwargs)
+        model = model_class(**(model_kwargs or {}))
 
-        # Fit model
         if custom_train_fn is None:
-            # Default behaviour (GLM, XGBoost)
-            model.fit(X_train_s, y_train)
+            model.fit(Xtr_s, ytr)
         else:
-            # Custom training function (NN)
-            model = custom_train_fn(model, X_train_s, y_train, X_val_s, y_val)
+            model = custom_train_fn(model, Xtr_s, ytr, Xv_s, yv)
 
-        # Predict
-        y_pred_train = model.predict(X_train_s)
-        y_pred_val = model.predict(X_val_s)
-        y_pred_test = model.predict(X_test_s)
+        # predictions
+        y_pred_train = model.predict(Xtr_s)
+        y_pred_val = model.predict(Xv_s) if Xv_s is not None else None
+        y_pred_test = model.predict(Xte_s)
 
-        # Evaluate
-        train_eval = evaluate_poisson_model(y_train, y_pred_train)
-        val_eval = evaluate_poisson_model(y_val, y_pred_val)
-        test_eval = evaluate_poisson_model(y_test, y_pred_test)
+        # evaluation
+        train_eval = evaluate_poisson_model(ytr, y_pred_train)
+        val_eval = evaluate_poisson_model(yv, y_pred_val) if yv is not None else None
+        test_eval = evaluate_poisson_model(yte, y_pred_test)
 
         results[cell] = {
             "model": model,
-            "scaler": scaler_instance,
-            # evaluation
+            "scaler": sc,
             "train": train_eval,
             "val": val_eval,
             "test": test_eval,
-            # predictions
             "y_pred_train": y_pred_train,
             "y_pred_val": y_pred_val,
             "y_pred_test": y_pred_test,
-            # true values
-            "y_train": y_train,
-            "y_val": y_val,
-            "y_test": y_test,
-            # indices
-            "train_idx": train_idx,
-            "val_idx": val_idx,
-            "test_idx": test_idx,
+            "y_train": ytr,
+            "y_val": yv,
+            "y_test": yte,
         }
 
         # optional training curves (for NN etc.)

@@ -97,35 +97,29 @@ def get_trial_slice(cell_idx, trial_idx, cell_ids, trials_per_cell=120):
     return slice(start, end)
 
 
-def split_cell_data(cell_ids, train_frac=0.7, val_frac=0.15):
+def split_cell_data(cell_ids, train_frac=0.7, val_frac=0.15, use_val=True):
     """
-    Get train/val/test splits for each cell based on the provided fractions.
-    Assumes that data is ordered by trial within each cell.
-
-    :param cell_ids: Array of all cell IDs
-    :param train_frac: Fraction of data to be used for training
-    :param val_frac: Fraction of data to be used for validation
-
-    :return: Dictionary mapping each cell ID to its train/val/test indices
+    Split each cell's indices into train/val/test.
+    If use_val=False, combine train+val into a single training set.
     """
     unique_cells = np.unique(cell_ids)
     splits = {}
 
     for cell in unique_cells:
         idx = np.where(cell_ids == cell)[0]
-
         n = len(idx)
+
         n_train = int(train_frac * n)
-        n_val = int(val_frac * n)
+        n_val = int(val_frac * n) if use_val else 0
 
         # temporarily just do a simple split (not randomized)
         # early trail bins in train, middle in val, late in test
         # total 3000 bins per cell, 120 trails, 25 bins per trial
-        # following a 70/15/15 spliyt at the trial level, we get:
+        # following a 70/15/15 split at the trial level, we get:
         # train = first 84 trials (2100 bins), val = next 18 trials (450 bins),
         # test = last 18 trials (450 bins)
         train_idx = idx[:n_train]
-        val_idx = idx[n_train : n_train + n_val]
+        val_idx = idx[n_train : n_train + n_val] if use_val else np.array([], dtype=int)
         test_idx = idx[n_train + n_val :]
 
         splits[cell] = {
@@ -135,3 +129,53 @@ def split_cell_data(cell_ids, train_frac=0.7, val_frac=0.15):
         }
 
     return splits
+
+
+def prepare_cellwise_datasets(
+    X, Y, cell_ids, train_frac=0.7, val_frac=0.15, use_val=True
+):
+    splits = split_cell_data(cell_ids, train_frac, val_frac, use_val)
+
+    X_train = {}
+    X_val = {}
+    X_test = {}
+    Y_train = {}
+    Y_val = {}
+    Y_test = {}
+
+    for cell, s in splits.items():
+        train_idx = s["train_idx"]
+        val_idx = s["val_idx"]
+        test_idx = s["test_idx"]
+
+        X_train[cell] = X[:, train_idx].T
+        Y_train[cell] = Y[train_idx]
+
+        X_val[cell] = X[:, val_idx].T if use_val else None
+        Y_val[cell] = Y[val_idx] if use_val else None
+
+        X_test[cell] = X[:, test_idx].T
+        Y_test[cell] = Y[test_idx]
+
+    return X_train, Y_train, X_val, Y_val, X_test, Y_test
+
+
+def flatten_cellwise_data(X_dict, Y_dict):
+    X_list = []
+    Y_list = []
+    cell_id_list = []
+
+    for cell, Xc in X_dict.items():
+        yc = Y_dict[cell]
+        n = len(yc)
+
+        # Xc is already (time, features) from prepare_cellwise_datasets
+        X_list.append(Xc)
+        Y_list.append(yc)
+        cell_id_list.append(np.full(n, cell))
+
+    X_flat = np.concatenate(X_list, axis=0).T  # (features, time)
+    Y_flat = np.concatenate(Y_list)
+    cell_ids_flat = np.concatenate(cell_id_list)
+
+    return X_flat, Y_flat, cell_ids_flat

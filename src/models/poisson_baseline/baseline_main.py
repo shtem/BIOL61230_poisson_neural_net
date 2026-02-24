@@ -2,6 +2,7 @@ import numpy as np
 from sklearn.linear_model import PoissonRegressor
 from xgboost import XGBRegressor
 from src.models.utils import fit_model_per_cell
+from src.get_data import prepare_cellwise_datasets, flatten_cellwise_data
 from src.models.hyperparam_search import grid_search_per_cell
 
 
@@ -29,17 +30,28 @@ def fit_poisson_glm(
     :return: Dictionary containing fitted models, coefficients, and performance metrics for each cell
     """
 
+    Xtr, Ytr, Xv, Yv, Xte, Yte = prepare_cellwise_datasets(
+        X,
+        Y,
+        cell_ids,
+        train_frac=train_frac,
+        val_frac=val_frac,
+        use_val=grid_search,  # only use val if grid search is on
+    )
+    Xtr_flat, Ytr_flat, cell_ids_tr_flat = flatten_cellwise_data(Xtr, Ytr)
+
     if not grid_search:
         glm_kwargs = {"alpha": alpha, "max_iter": 2000}
 
         results = fit_model_per_cell(
-            X,
-            Y,
-            cell_ids,
+            Xtr,
+            Ytr,
+            Xv,
+            Yv,
+            Xte,
+            Yte,
             model_class=PoissonRegressor,
             model_kwargs=glm_kwargs,
-            train_frac=train_frac,
-            val_frac=val_frac,
         )
 
         return {
@@ -57,9 +69,9 @@ def fit_poisson_glm(
     model_param_grid = {"alpha": alpha_grid}
 
     gs = grid_search_per_cell(
-        X,
-        Y,
-        cell_ids,
+        Xtr_flat,
+        Ytr_flat,
+        cell_ids_tr_flat,
         model_class=PoissonRegressor,
         model_param_grid=model_param_grid,
         trainer_param_grid=None,  # GLM has no trainer params
@@ -77,13 +89,14 @@ def fit_poisson_glm(
         }
 
         final_results[cell] = fit_model_per_cell(
-            X,
-            Y,
-            cell_ids,
+            Xtr,
+            Ytr,
+            Xv,
+            Yv,
+            Xte,
+            Yte,
             model_class=PoissonRegressor,
             model_kwargs=glm_kwargs,
-            train_frac=train_frac,
-            val_frac=val_frac,
         )[cell]
 
     return {
@@ -117,6 +130,16 @@ def fit_poisson_xgboost(
     :return: Dictionary containing fitted models, coefficients, and performance metrics for each cell
     """
 
+    Xtr, Ytr, Xv, Yv, Xte, Yte = prepare_cellwise_datasets(
+        X,
+        Y,
+        cell_ids,
+        train_frac=train_frac,
+        val_frac=val_frac,
+        use_val=grid_search,
+    )
+    Xtr_flat, Ytr_flat, cell_ids_tr_flat = flatten_cellwise_data(Xtr, Ytr)
+
     # -------------------------
     # MODE A — GLOBAL PARAMS
     # -------------------------
@@ -133,13 +156,14 @@ def fit_poisson_xgboost(
         default_params.update(kwargs)
 
         results = fit_model_per_cell(
-            X,
-            Y,
-            cell_ids,
+            Xtr,
+            Ytr,
+            Xv,
+            Yv,
+            Xte,
+            Yte,
             model_class=XGBRegressor,
             model_kwargs=default_params,
-            train_frac=train_frac,
-            val_frac=val_frac,
         )
 
         return {
@@ -161,9 +185,9 @@ def fit_poisson_xgboost(
     model_param_grid = param_grid
 
     gs = grid_search_per_cell(
-        X,
-        Y,
-        cell_ids,
+        Xtr_flat,
+        Ytr_flat,
+        cell_ids_tr_flat,
         model_class=XGBRegressor,
         model_param_grid=model_param_grid,
         trainer_param_grid=None,  # XGB has no trainer params
@@ -185,13 +209,14 @@ def fit_poisson_xgboost(
         )
 
         final_results[cell] = fit_model_per_cell(
-            X,
-            Y,
-            cell_ids,
+            Xtr,
+            Ytr,
+            Xv,
+            Yv,
+            Xte,
+            Yte,
             model_class=XGBRegressor,
             model_kwargs=params,
-            train_frac=train_frac,
-            val_frac=val_frac,
         )[cell]
 
     return {

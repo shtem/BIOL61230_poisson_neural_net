@@ -229,7 +229,12 @@ def grid_search_transfer_learning(
             trainer = TransferLearningTrainer(**tp)
 
             # Train
-            model = trainer.train(model, X_cells, Y_cells)
+            out = trainer.train(model, X_cells, Y_cells)
+            # Handle (model, train_losses) return format
+            if isinstance(out, tuple):
+                model = out[0]
+            else:
+                model = out
 
             # Evaluate
             cell_scores = []
