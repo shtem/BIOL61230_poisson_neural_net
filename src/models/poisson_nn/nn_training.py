@@ -96,6 +96,7 @@ class PoissonTrainer(BaseTrainer):
                 optimiser.step()
                 epoch_loss += loss.item()
 
+            epoch_loss /= len(train_loader)  # average loss over batches
             train_losses.append(epoch_loss)
 
             model.eval()
@@ -121,9 +122,22 @@ class PoissonTrainer(BaseTrainer):
 
 
 class TransferLearningTrainer(BaseTrainer):
+    def __init__(
+        self,
+        lr=1e-3,
+        epochs=100,
+        weight_decay=1e-4,
+        l1_lambda=0.0,
+        batch_size="auto",
+        patience=10,
+    ):
+        super().__init__(lr, epochs, weight_decay, l1_lambda, batch_size)
+        self.patience = patience
+
     def train(self, model, X_cells, Y_cells):
         model.to(self.device)
 
+        # Convert to tensors
         X_cells = [
             torch.tensor(x, dtype=torch.float32, device=self.device) for x in X_cells
         ]
@@ -139,23 +153,49 @@ class TransferLearningTrainer(BaseTrainer):
         )
 
         train_losses = []
+        best_loss = float("inf")
+        best_state = None
+        patience_counter = 0
 
+        # Training loop
         for _ in range(self.epochs):
             model.train()
             optimiser.zero_grad()
 
             total_loss = 0.0
+
+            # Train each cell using mini-batches
             for ci, (Xc, Yc) in enumerate(zip(X_cells, Y_cells)):
-                preds = model(Xc, ci)
-                loss = criterion(preds, Yc)
-                total_loss += loss
+                batch_size = self._get_batch_size(len(Xc))
+                if batch_size is None:
+                    loader = [(Xc, Yc)]
+                else:
+                    ds = TensorDataset(Xc, Yc)
+                    loader = DataLoader(ds, batch_size=batch_size, shuffle=True)
 
-            if self.l1_lambda > 0:
-                total_loss = total_loss + self._l1_penalty(model)
-
-            train_losses.append(total_loss.item())
+                for xb, yb in loader:
+                    preds = model(xb, ci)
+                    loss = criterion(preds, yb)
+                    if self.l1_lambda > 0:
+                        loss = loss + self._l1_penalty(model)
+                    total_loss += loss
 
             total_loss.backward()
             optimiser.step()
+
+            train_losses.append(total_loss.item())
+
+            # Early stopping
+            if total_loss.item() < best_loss:
+                best_loss = total_loss.item()
+                best_state = model.state_dict()
+                patience_counter = 0
+            else:
+                patience_counter += 1
+                if patience_counter >= self.patience:
+                    break
+
+        if best_state is not None:
+            model.load_state_dict(best_state)
 
         return model, train_losses

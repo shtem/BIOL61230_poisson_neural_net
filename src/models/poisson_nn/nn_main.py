@@ -221,6 +221,7 @@ def fit_poisson_nn_transfer_learning(
     weight_decay=1e-4,
     l1_lambda=0.0,
     batch_size="auto",
+    patience=10,
     scaler=None,
 ):
     unique_cells = np.unique(cell_ids)
@@ -254,7 +255,7 @@ def fit_poisson_nn_transfer_learning(
     Y_cells_test = [Yte[cell] for cell in unique_cells]
 
     # ============================================================
-    # MODE A — GLOBAL PARAMS
+    # MODE A — NO GRID SEARCH
     # ============================================================
     if not grid_search:
 
@@ -265,6 +266,7 @@ def fit_poisson_nn_transfer_learning(
             "weight_decay": weight_decay,
             "l1_lambda": l1_lambda,
             "batch_size": batch_size,
+            "patience": patience,
         }
 
         model = SharedHiddenPoissonNN(n_features, hidden_sizes, n_cells)

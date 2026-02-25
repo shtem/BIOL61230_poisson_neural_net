@@ -194,7 +194,6 @@ def grid_search_transfer_learning(
 ):
     """
     Grid search for transfer-learning models.
-    One shared model, one shared trainer.
     Uses only the training split (no leakage).
     """
 
@@ -208,7 +207,7 @@ def grid_search_transfer_learning(
     n_features = X.shape[0]
 
     # ------------------------------------------------------------
-    # Use the SAME train split as in fit_poisson_nn_transfer_learning
+    # Use SAME train split as final TL model
     # ------------------------------------------------------------
     Xtr, Ytr, _, _, _, _ = prepare_cellwise_datasets(
         X,
@@ -219,7 +218,7 @@ def grid_search_transfer_learning(
         use_val=False,
     )
 
-    # Optional scaling per cell (fit on train only)
+    # Optional scaling per cell
     if scaler is not None:
         for cell in unique_cells:
             sc = scaler()
@@ -241,14 +240,11 @@ def grid_search_transfer_learning(
             model = model_class(n_features=n_features, n_cells=n_cells, **mp)
             trainer = TransferLearningTrainer(**tp)
 
-            # Train (use unified wrapper if you like)
+            # Train
             out = trainer.train(model, X_cells, Y_cells)
-            if isinstance(out, tuple):
-                model = out[0]
-            else:
-                model = out
+            model = out[0] if isinstance(out, tuple) else out
 
-            # Evaluate on training split (for hyperparam scoring)
+            # Evaluate on training split
             cell_scores = []
             for ci, cell in enumerate(unique_cells):
                 Xc = torch.tensor(X_cells[ci], dtype=torch.float32)
