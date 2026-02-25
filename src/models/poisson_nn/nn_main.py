@@ -14,28 +14,43 @@ import torch
 # ============================================================
 # Unified training wrapper (works for both trainers)
 # ============================================================
-def run_trainer(trainer, model, Xtr, ytr, Xv=None, yv=None):
-    out = trainer.train(model, Xtr, ytr, Xv, yv)
+def run_trainer(trainer, model, Xtr, ytr=None, Xv=None, yv=None):
+    """
+    Unified wrapper for both PoissonTrainer and TransferLearningTrainer.
+    Detects which signature to use based on the trainer type.
+    """
 
-    # PoissonTrainer returns (model, train_losses, val_losses)
-    if isinstance(out, tuple) and len(out) == 3:
-        model, train_losses, val_losses = out
-        model.train_losses = train_losses
-        model.val_losses = val_losses
+    # --- Transfer Learning Trainer ---
+    if isinstance(trainer, TransferLearningTrainer):
+        out = trainer.train(model, Xtr, ytr)  # Xtr = X_cells, ytr = Y_cells
 
-    # TransferLearningTrainer returns (model, train_losses)
-    elif isinstance(out, tuple) and len(out) == 2:
-        model, train_losses = out
-        model.train_losses = train_losses
-        model.val_losses = None
+        # TL returns (model, train_losses)
+        if isinstance(out, tuple):
+            model, train_losses = out
+            model.train_losses = train_losses
+            model.val_losses = None
+        else:
+            model = out
+            model.train_losses = None
+            model.val_losses = None
 
-    # Fallback
+        return model
+
+    # --- Per-cell PoissonTrainer ---
     else:
-        model = out
-        model.train_losses = None
-        model.val_losses = None
+        out = trainer.train(model, Xtr, ytr, Xv, yv)
 
-    return model
+        # PoissonTrainer returns (model, train_losses, val_losses)
+        if isinstance(out, tuple) and len(out) == 3:
+            model, train_losses, val_losses = out
+            model.train_losses = train_losses
+            model.val_losses = val_losses
+        else:
+            model = out
+            model.train_losses = None
+            model.val_losses = None
+
+        return model
 
 
 # ============================================================
@@ -213,7 +228,7 @@ def fit_poisson_nn_transfer_learning(
     n_features = X.shape[0]
 
     # ============================================================
-    # Proper train/test split for TL
+    # Proper train/test split for TL (no val)
     # ============================================================
     Xtr, Ytr, _, _, Xte, Yte = prepare_cellwise_datasets(
         X,
@@ -223,6 +238,13 @@ def fit_poisson_nn_transfer_learning(
         val_frac=0.0,
         use_val=False,
     )
+
+    # Optional scaling per cell (fit on train, transform train+test)
+    if scaler is not None:
+        for cell in unique_cells:
+            sc = scaler()
+            Xtr[cell] = sc.fit_transform(Xtr[cell])
+            Xte[cell] = sc.transform(Xte[cell])
 
     # Convert dict → list in cell order
     X_cells_train = [Xtr[cell] for cell in unique_cells]
@@ -267,6 +289,8 @@ def fit_poisson_nn_transfer_learning(
                 "test": metrics,
                 "train": None,
                 "val": None,
+                "train_losses": getattr(model, "train_losses", None),
+                "val_losses": getattr(model, "val_losses", None),
             }
 
         return {
@@ -296,12 +320,12 @@ def fit_poisson_nn_transfer_learning(
     best_mp = gs["best_params"]["model_params"]
     best_tp = gs["best_params"]["trainer_params"]
 
-    # Fit final TL model
+    # Fit final TL model on train split
     model = SharedHiddenPoissonNN(n_features, best_mp["hidden_sizes"], n_cells)
     trainer = TransferLearningTrainer(**best_tp)
     model = run_trainer(trainer, model, X_cells_train, Y_cells_train)
 
-    # Evaluate per cell
+    # Evaluate per cell on test split
     results = {}
     for ci, cell in enumerate(unique_cells):
         Xc_test = torch.tensor(X_cells_test[ci], dtype=torch.float32)
@@ -319,6 +343,8 @@ def fit_poisson_nn_transfer_learning(
             "test": metrics,
             "train": None,
             "val": None,
+            "train_losses": getattr(model, "train_losses", None),
+            "val_losses": getattr(model, "val_losses", None),
         }
 
     return {

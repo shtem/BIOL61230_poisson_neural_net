@@ -3,6 +3,7 @@ import torch
 import numpy as np
 from sklearn.model_selection import KFold
 from src.models.evaluate import pseudo_r2
+from src.get_data import prepare_cellwise_datasets
 from src.models.poisson_nn.nn_training import TransferLearningTrainer
 
 
@@ -194,6 +195,7 @@ def grid_search_transfer_learning(
     """
     Grid search for transfer-learning models.
     One shared model, one shared trainer.
+    Uses only the training split (no leakage).
     """
 
     model_param_combos = _expand_param_grid(model_param_grid)
@@ -205,20 +207,31 @@ def grid_search_transfer_learning(
     n_cells = len(unique_cells)
     n_features = X.shape[0]
 
-    # Prepare per-cell data
-    X_cells = []
-    Y_cells = []
-    for cell in unique_cells:
-        idx = np.where(cell_ids == cell)[0]
-        Xc = X[:, idx].T
-        Yc = Y[idx]
-        if scaler is not None:
-            sc = scaler()
-            Xc = sc.fit_transform(Xc)
-        X_cells.append(Xc)
-        Y_cells.append(Yc)
+    # ------------------------------------------------------------
+    # Use the SAME train split as in fit_poisson_nn_transfer_learning
+    # ------------------------------------------------------------
+    Xtr, Ytr, _, _, _, _ = prepare_cellwise_datasets(
+        X,
+        Y,
+        cell_ids,
+        train_frac=0.85,
+        val_frac=0.0,
+        use_val=False,
+    )
 
+    # Optional scaling per cell (fit on train only)
+    if scaler is not None:
+        for cell in unique_cells:
+            sc = scaler()
+            Xtr[cell] = sc.fit_transform(Xtr[cell])
+
+    # Dict → list in fixed cell order
+    X_cells = [Xtr[cell] for cell in unique_cells]
+    Y_cells = [Ytr[cell] for cell in unique_cells]
+
+    # ------------------------------------------------------------
     # Evaluate each combination
+    # ------------------------------------------------------------
     for mp in model_param_combos:
         for tp in trainer_param_combos:
 
@@ -228,15 +241,14 @@ def grid_search_transfer_learning(
             model = model_class(n_features=n_features, n_cells=n_cells, **mp)
             trainer = TransferLearningTrainer(**tp)
 
-            # Train
+            # Train (use unified wrapper if you like)
             out = trainer.train(model, X_cells, Y_cells)
-            # Handle (model, train_losses) return format
             if isinstance(out, tuple):
                 model = out[0]
             else:
                 model = out
 
-            # Evaluate
+            # Evaluate on training split (for hyperparam scoring)
             cell_scores = []
             for ci, cell in enumerate(unique_cells):
                 Xc = torch.tensor(X_cells[ci], dtype=torch.float32)

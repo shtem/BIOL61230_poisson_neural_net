@@ -81,24 +81,23 @@ def summarise_model_results(results, model_name="Model"):
     :param results: Dictionary containing fitted models and performance metrics for each cell
     :param model_name: Name of the model to be displayed in the summary (default "Model")
     """
-
     print(f"\n===== {model_name} Summary =====")
 
     for cell, info in results.items():
         print(f"\n--- Cell {cell} ---")
 
-        # Train metrics (if available)
-        if "train" in info:
-            train = info["train"]
+        # Train metrics
+        train = info.get("train")
+        if train is not None:
             print(f"Train pseudo-R²:       {train['pseudo_r2']:.4f}")
             print(f"Train log-likelihood:  {train['log_likelihood']:.2f}")
             print(f"Train deviance:        {train['deviance']:.2f}")
         else:
             print("Train metrics:         (not available)")
 
-        # Val metrics (if available)
-        if "val" in info:
-            val = info["val"]
+        # Val metrics
+        val = info.get("val")
+        if val is not None:
             print(f"Val pseudo-R²:         {val['pseudo_r2']:.4f}")
             print(f"Val log-likelihood:    {val['log_likelihood']:.2f}")
             print(f"Val deviance:          {val['deviance']:.2f}")
