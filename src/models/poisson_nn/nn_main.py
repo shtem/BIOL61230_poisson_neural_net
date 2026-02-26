@@ -131,7 +131,7 @@ def fit_poisson_nn(
     # ------------------------------------------------------------
     # 1. Prepare datasets (validation only if grid_search=True)
     # ------------------------------------------------------------
-    use_val = grid_search
+    use_val = True
 
     Xtr, Ytr, Xv, Yv, Xte, Yte = prepare_cellwise_datasets(
         X,
