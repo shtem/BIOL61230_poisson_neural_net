@@ -1,3 +1,5 @@
+import torch
+import numpy as np
 from src.models.poisson_nn.nn_models import PoissonNN, SharedHiddenPoissonNN
 from src.models.poisson_nn.nn_training import PoissonTrainer, TransferLearningTrainer
 from src.models.utils import fit_model_per_cell
@@ -7,24 +9,38 @@ from src.models.hyperparam_search import (
     grid_search_per_cell,
     grid_search_transfer_learning,
 )
-import numpy as np
-import torch
 
 
-# ============================================================
+# ------------------------------------------------------------
 # Unified training wrapper (works for both trainers)
-# ============================================================
+# ------------------------------------------------------------
 def run_trainer(trainer, model, Xtr, ytr=None, Xv=None, yv=None):
-    """
-    Unified wrapper for both PoissonTrainer and TransferLearningTrainer.
-    Detects which signature to use based on the trainer type.
+    """Dispatch call to the appropriate trainer and normalize outputs.
+
+    Both trainer classes return slightly different tuples.  This helper inspects
+    the ``trainer`` instance, calls its ``train`` method with the correct
+    signature, then attaches ``train_losses`` and ``val_losses`` attributes to
+    the returned model for later inspection.
+
+    Parameters
+    ----------
+    trainer : PoissonTrainer or TransferLearningTrainer
+    model : nn.Module
+        Untrained model instance.
+    Xtr : array-like or list
+        Training data; format depends on trainer type (flat vs per-cell list).
+    ytr : array-like or list, optional
+        Training targets.
+    Xv, yv : array-like, optional
+        Validation sets used only by ``PoissonTrainer``.
     """
 
     # --- Transfer Learning Trainer ---
     if isinstance(trainer, TransferLearningTrainer):
+        # TL trainer expects Xtr/ytr to be lists of cell-specific data
         out = trainer.train(model, Xtr, ytr)  # Xtr = X_cells, ytr = Y_cells
 
-        # TL returns (model, train_losses)
+        # TL returns (model, train_losses) or just model
         if isinstance(out, tuple):
             model, train_losses = out
             model.train_losses = train_losses
@@ -38,6 +54,7 @@ def run_trainer(trainer, model, Xtr, ytr=None, Xv=None, yv=None):
 
     # --- Per-cell PoissonTrainer ---
     else:
+        # standard trainer uses explicit train/val splits
         out = trainer.train(model, Xtr, ytr, Xv, yv)
 
         # PoissonTrainer returns (model, train_losses, val_losses)
@@ -53,9 +70,9 @@ def run_trainer(trainer, model, Xtr, ytr=None, Xv=None, yv=None):
         return model
 
 
-# ============================================================
+# ------------------------------------------------------------
 # Per-cell PoissonNN
-# ============================================================
+# ------------------------------------------------------------
 def fit_poisson_nn(
     X,
     Y,
@@ -75,13 +92,45 @@ def fit_poisson_nn(
     val_frac=0.15,
     scaler=None,
 ):
-    """
-    Fit per-cell PoissonNN models, optionally with per-cell grid search.
+    """Train independent Poisson neural nets for each cell.
+
+    Two modes are supported:
+
+    * ``grid_search=False`` - use fixed hyperparameters for every cell.
+    * ``grid_search=True`` - perform per-cell K-fold cross-validated grid
+      search over model and trainer parameters, then refit best models.
+
+    Parameters
+    ----------
+    X : ndarray (n_features, n_samples)
+    Y : ndarray (n_samples,)
+    cell_ids : ndarray (n_samples,)
+        Identifiers mapping each sample to a cell.
+    grid_search : bool, optional
+        Whether to tune hyperparameters per cell.
+    model_param_grid, trainer_param_grid : dict, optional
+        Parameter grids passed to ``grid_search_per_cell`` when tuning.
+    hidden_sizes : list, optional
+        Default architecture if not tuning.
+    k_folds : int
+        Number of folds for cross-validation during grid search.
+    lr, epochs, weight_decay, l1_lambda, batch_size, patience :
+        Default trainer hyperparameters.
+    train_frac, val_frac : float
+        Fractions of data allocated to training and validation sets.
+    scaler : callable or None
+        Optional feature scaler applied independently per cell.
+
+    Returns
+    -------
+    dict
+        Contains fitted ``results`` (by cell), ``best_params`` and
+        ``all_scores`` from grid search (if performed).
     """
 
-    # ============================================================
+    # ------------------------------------------------------------
     # 1. Prepare datasets (validation only if grid_search=True)
-    # ============================================================
+    # ------------------------------------------------------------
     use_val = grid_search
 
     Xtr, Ytr, Xv, Yv, Xte, Yte = prepare_cellwise_datasets(
@@ -92,13 +141,15 @@ def fit_poisson_nn(
         val_frac=val_frac,
         use_val=use_val,
     )
+    # flatten for grid search routines which expect 2d data
     Xtr_flat, Ytr_flat, cell_ids_tr_flat = flatten_cellwise_data(Xtr, Ytr)
 
-    # ============================================================
-    # MODE A — GLOBAL PARAMS (no grid search)
-    # ============================================================
+    # ------------------------------------------------------------
+    # MODE A — NO GRID SEARCH
+    # ------------------------------------------------------------
     if not grid_search:
 
+        # use provided grids or fall back to defaults
         model_params = model_param_grid or {"hidden_sizes": hidden_sizes}
         trainer_params = trainer_param_grid or {
             "lr": lr,
@@ -109,13 +160,16 @@ def fit_poisson_nn(
             "patience": patience,
         }
 
+        # factory to create new model instances per cell
         def model_class(**kw):
             return PoissonNN(n_features=X.shape[0], **model_params)
 
+        # training wrapper that ignores grid search args
         def train_fn(model, Xtr_c, ytr_c, Xv_c, yv_c, **tp):
             trainer = PoissonTrainer(**trainer_params)
             return run_trainer(trainer, model, Xtr_c, ytr_c, Xv_c, yv_c)
 
+        # fit each cell separately using fit_model_per_cell helper
         results = fit_model_per_cell(
             Xtr,
             Ytr,
@@ -138,9 +192,10 @@ def fit_poisson_nn(
             "all_scores": None,
         }
 
-    # ============================================================
+    # ------------------------------------------------------------
     # MODE B — GRID SEARCH
-    # ============================================================
+    # ------------------------------------------------------------
+    # if no grids provided, create trivial grids that include default values
     if model_param_grid is None:
         model_param_grid = {"hidden_sizes": [hidden_sizes]}
 
@@ -154,10 +209,13 @@ def fit_poisson_nn(
             "patience": [patience],
         }
 
+    # wrapper used during cross-validation to instantiate trainers with
+    # varying hyperparameters
     def gs_train_fn(model, Xtr_c, ytr_c, Xv_c, yv_c, **tp):
         trainer = PoissonTrainer(**tp)
         return run_trainer(trainer, model, Xtr_c, ytr_c, Xv_c, yv_c)
 
+    # perform per-cell cross-validated grid search
     gs = grid_search_per_cell(
         Xtr_flat,
         Ytr_flat,
@@ -172,9 +230,9 @@ def fit_poisson_nn(
 
     best_params = gs["best_params"]
 
-    # ============================================================
+    # ------------------------------------------------------------
     # Fit final models using best hyperparameters
-    # ============================================================
+    # ------------------------------------------------------------
     final_results = {}
 
     for cell in np.unique(cell_ids):
@@ -185,6 +243,8 @@ def fit_poisson_nn(
             trainer = PoissonTrainer(**tp)
             return run_trainer(trainer, model, Xtr_c, ytr_c, Xv_c, yv_c)
 
+        # refit with optimal parameters for each cell and store only that cell's
+        # set of results
         final_results[cell] = fit_model_per_cell(
             Xtr,
             Ytr,
@@ -205,9 +265,9 @@ def fit_poisson_nn(
     }
 
 
-# ============================================================
+# ------------------------------------------------------------
 # Transfer Learning PoissonNN
-# ============================================================
+# ------------------------------------------------------------
 def fit_poisson_nn_transfer_learning(
     X,
     Y,
@@ -224,13 +284,42 @@ def fit_poisson_nn_transfer_learning(
     patience=10,
     scaler=None,
 ):
+    """Train a shared‑hidden PoissonNN across multiple cells (transfer learning).
+
+    Each cell has its own output head but the hidden layers are shared.  This
+    function supports an optional hyperparameter grid search over the same
+    parameters as ``fit_poisson_nn``.  Because the transfer model is trained
+    jointly, we only split into train/test (no validation) to avoid leakage.
+
+    Parameters
+    ----------
+    X, Y, cell_ids : array-like
+        Input data as in ``fit_poisson_nn``.
+    grid_search : bool
+        Whether to perform grid search using ``grid_search_transfer_learning``.
+    model_param_grid, trainer_param_grid : dict, optional
+        If ``grid_search`` is True, these define the search space.
+    hidden_sizes : list
+        Default hidden layer sizes when not tuning.
+    Other arguments :
+        Trainer hyperparameters (lr, epochs, etc.) passed to
+        ``TransferLearningTrainer``.
+    scaler : callable or None
+        Optional per-cell feature scaler.
+
+    Returns
+    -------
+    dict
+        Includes ``results`` keyed by cell, ``best_params`` and optionally
+        ``all_scores`` from grid search.
+    """
     unique_cells = np.unique(cell_ids)
     n_cells = len(unique_cells)
     n_features = X.shape[0]
 
-    # ============================================================
+    # ------------------------------------------------------------
     # Proper train/test split for TL (no val)
-    # ============================================================
+    # ------------------------------------------------------------
     Xtr, Ytr, _, _, Xte, Yte = prepare_cellwise_datasets(
         X,
         Y,
@@ -247,18 +336,19 @@ def fit_poisson_nn_transfer_learning(
             Xtr[cell] = sc.fit_transform(Xtr[cell])
             Xte[cell] = sc.transform(Xte[cell])
 
-    # Convert dict → list in cell order
+    # Convert dict → list in cell order for trainers which expect lists
     X_cells_train = [Xtr[cell] for cell in unique_cells]
     Y_cells_train = [Ytr[cell] for cell in unique_cells]
 
     X_cells_test = [Xte[cell] for cell in unique_cells]
     Y_cells_test = [Yte[cell] for cell in unique_cells]
 
-    # ============================================================
+    # ------------------------------------------------------------
     # MODE A — NO GRID SEARCH
-    # ============================================================
+    # ------------------------------------------------------------
     if not grid_search:
 
+        # fixed hyperparameters across the board
         model_params = {"hidden_sizes": hidden_sizes}
         trainer_params = {
             "lr": lr,
@@ -269,11 +359,12 @@ def fit_poisson_nn_transfer_learning(
             "patience": patience,
         }
 
+        # instantiate shared-hidden model and train it on all cells simultaneously
         model = SharedHiddenPoissonNN(n_features, hidden_sizes, n_cells)
         trainer = TransferLearningTrainer(**trainer_params)
         model = run_trainer(trainer, model, X_cells_train, Y_cells_train)
 
-        # Evaluate on held-out test set
+        # Evaluate on held-out test set cell-by-cell
         results = {}
         for ci, cell in enumerate(unique_cells):
             Xc_test = torch.tensor(X_cells_test[ci], dtype=torch.float32)
@@ -304,9 +395,10 @@ def fit_poisson_nn_transfer_learning(
             "all_scores": None,
         }
 
-    # ============================================================
+    # ------------------------------------------------------------
     # MODE B — GRID SEARCH
-    # ============================================================
+    # ------------------------------------------------------------
+    # perform a joint grid search over model and trainer parameters
     gs = grid_search_transfer_learning(
         X,
         Y,
@@ -322,12 +414,12 @@ def fit_poisson_nn_transfer_learning(
     best_mp = gs["best_params"]["model_params"]
     best_tp = gs["best_params"]["trainer_params"]
 
-    # Fit final TL model on train split
+    # Fit final TL model on train split using found hyperparameters
     model = SharedHiddenPoissonNN(n_features, best_mp["hidden_sizes"], n_cells)
     trainer = TransferLearningTrainer(**best_tp)
     model = run_trainer(trainer, model, X_cells_train, Y_cells_train)
 
-    # Evaluate per cell on test split
+    # Evaluate per cell on test split; behavior same as mode A
     results = {}
     for ci, cell in enumerate(unique_cells):
         Xc_test = torch.tensor(X_cells_test[ci], dtype=torch.float32)

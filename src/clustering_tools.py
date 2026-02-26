@@ -1,27 +1,40 @@
+import umap
 import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.cluster import KMeans
+from sklearn.decomposition import PCA
 from sklearn.linear_model import PoissonRegressor
 from sklearn.preprocessing import StandardScaler
-from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 from scipy.cluster.hierarchy import linkage, dendrogram, fcluster
-from sklearn.decomposition import PCA
-import matplotlib.pyplot as plt
-import umap
 
 
 # -----------------------------
 # Feature extraction
 # -----------------------------
 def extract_corr_features(X, Y, cell_ids):
-    """
-    Extract correlation features for each cell by computing
-    the correlation between each covariate and the cell's spike counts.
+    """Compute per-cell correlation between covariates and spike counts.
 
-    :param X: Array of shape (n_features, n_time_bins) containing the input features (covariates)
-    :param Y: Array of shape (n_time_bins,) containing the spike counts for each time bin
-    :param cell_ids: Array of all cell IDs
+    This simple feature extractor treats each covariate (row of ``X``) as a
+    predictor and computes the Pearson correlation with the corresponding
+    cell's spike count time series.  The resulting feature vector for each cell
+    has length equal to ``n_features`` and can be used as input to clustering
+    algorithms.
 
-    :return: Array of shape (n_cells, n_features) containing the correlation features for each cell
+    Parameters
+    ----------
+    X : ndarray, shape (n_features, n_time_bins)
+        Covariate time series.
+    Y : ndarray, shape (n_time_bins,)
+        Spike count observations across time.
+    cell_ids : ndarray, shape (n_time_bins,)
+        Identifier specifying which cell produced each observation.
+
+    Returns
+    -------
+    ndarray, shape (n_cells, n_features)
+        Correlation-based feature matrix. Rows correspond to unique cells in
+        the order returned by ``np.unique(cell_ids)``.
     """
     features = []
     for cell in np.unique(cell_ids):
@@ -29,6 +42,7 @@ def extract_corr_features(X, Y, cell_ids):
         y_cell = Y[idx]
         x_cell = X[:, idx]
 
+        # compute correlation between each feature and the cell's response
         corr = [np.corrcoef(x_cell[i], y_cell)[0, 1] for i in range(X.shape[0])]
         features.append(corr)
 
@@ -36,20 +50,30 @@ def extract_corr_features(X, Y, cell_ids):
 
 
 def extract_glm_features(X, Y, cell_ids):
-    """
-    Extract GLM weight features for each cell by fitting a Poisson GLM to each cell's data.
+    """Generate features by fitting a Poisson GLM per cell and using weights.
 
-    :param X: Array of shape (n_features, n_time_bins) containing the input features (covariates)
-    :param Y: Array of shape (n_time_bins,) containing the spike counts for each time bin
-    :param cell_ids: Array of all cell IDs
+    For each cell, the design matrix (features across time) is transposed to
+    shape ``(n_time_bins_cell, n_features)`` and a Poisson regression is fit.
+    The fitted coefficients are then returned as the feature vector for that
+    cell.  This method can capture more nuanced relationships than simple
+    correlations.
 
-    :return: Array of shape (n_cells, n_features) containing the GLM weight features for each cell
+    Parameters
+    ----------
+    X : ndarray, shape (n_features, n_time_bins)
+    Y : ndarray, shape (n_time_bins,)
+    cell_ids : ndarray, shape (n_time_bins,)
+
+    Returns
+    -------
+    ndarray, shape (n_cells, n_features)
+        GLM coefficient matrix.
     """
     features = []
     for cell in np.unique(cell_ids):
         idx = np.where(cell_ids == cell)[0]
         y_cell = Y[idx]
-        x_cell = X[:, idx].T
+        x_cell = X[:, idx].T  # transpose for sklearn's convention
 
         glm = PoissonRegressor(alpha=0.0, max_iter=1000)
         glm.fit(x_cell, y_cell)
@@ -62,25 +86,45 @@ def extract_glm_features(X, Y, cell_ids):
 # Feature normalisation
 # -----------------------------
 def scale_features(features):
-    """
-    Standardise features globally.
+    """Standardize feature matrix to zero mean and unit variance across cells.
 
-    :param features: Array of shape (n_cells, n_features) containing the features to be standardised
+    This global scaling ensures that each feature contributes equally to
+    distance-based clustering algorithms.
 
-    :return: Array of shape (n_cells, n_features) containing the standardised features
+    Parameters
+    ----------
+    features : ndarray, shape (n_cells, n_features)
+        Raw feature matrix to be standardized.
+
+    Returns
+    -------
+    ndarray, shape (n_cells, n_features)
+        Standardized features with zero mean and unit variance.
     """
     return StandardScaler().fit_transform(features)
 
 
 def zscore_features_within_subject(features, cell_ids, rec_ids):
-    """
-    Z-score features within each subject to control for inter-subject variability.
+    """Normalize features separately for each recording/subject.
 
-    :param features: Array of shape (n_cells, n_features) containing the features to be z-scored within each subject
-    :param cell_ids: Array of shape (n_cells,) containing the cell IDs for each cell
-    :param rec_ids: Array of shape (n_cells,) containing the recording IDs for each cell
+    This is helpful when recordings come from multiple subjects and one wishes
+    to remove subject-specific offsets or scale differences before clustering.
+    The operation is performed per unique recording ID, z-scoring only those
+    cells belonging to that recording.
 
-    :return: Array of shape (n_cells, n_features) containing the z-scored features
+    Parameters
+    ----------
+    features : ndarray, shape (n_cells, n_features)
+        Feature matrix to be normalized.
+    cell_ids : ndarray, shape (n_cells,)
+        Unique identifiers for each cell.
+    rec_ids : ndarray, shape (n_cells,)
+        Recording/subject ID corresponding to each cell.
+
+    Returns
+    -------
+    ndarray, shape (n_cells, n_features)
+        Z-scored features within each subject.
     """
     unique_subjects = np.unique(rec_ids)
     features_z = features.copy()
@@ -100,28 +144,48 @@ def zscore_features_within_subject(features, cell_ids, rec_ids):
 # Clustering algorithms
 # -----------------------------
 def kmeans_cluster(features, n_clusters=2):
-    """
-    Cluster cells based on their features using K-means clustering.
+    """Perform K‑means clustering on cell feature vectors.
 
-    :param features: Array of shape (n_cells, n_features) containing the features to be clustered
-    :param n_clusters: Number of clusters to form
+    Parameters
+    ----------
+    features : ndarray, shape (n_cells, n_features)
+    n_clusters : int
+        Desired number of clusters.
 
-    :return: Array of shape (n_cells,) containing the cluster labels for each cell
+    Returns
+    -------
+    ndarray, shape (n_cells,)
+        Integer cluster labels.
     """
     kmeans = KMeans(n_clusters=n_clusters, random_state=0)
     return kmeans.fit_predict(features)
 
 
 def hierarchical_cluster(features, method="ward", max_clusters=None, show_plot=True):
-    """
-    Cluster cells based on their features using hierarchical clustering.
+    """Apply hierarchical clustering and optionally plot dendrogram.
 
-    :param features: Array of shape (n_cells, n_features) containing the features to be clustered
-    :param method: Method for hierarchical clustering (e.g., "ward", "complete", "average")
-    :param max_clusters: Maximum number of clusters to form
-    :param show_plot: Whether to show the dendrogram plot
+    The linkage matrix ``Z`` is computed from the feature matrix.  If
+    ``show_plot`` is True a matplotlib figure containing the dendrogram is
+    returned.  ``max_clusters`` can be specified to extract flat cluster labels
+    at a particular cut height.
 
-    :return: Array of shape (n_cells,) containing the cluster labels for each cell, and Matplotlib figure object if show_plot is True
+    Parameters
+    ----------
+    features : ndarray, shape (n_cells, n_features)
+    method : str
+        Agglomeration method used by ``scipy.cluster.hierarchy.linkage``.
+    max_clusters : int or None
+        If provided, generate flat cluster labels with at most this many
+        clusters.
+    show_plot : bool
+        Whether to render and return a dendrogram figure.
+
+    Returns
+    -------
+    labels : ndarray or None
+        Cluster labels if ``max_clusters`` is not None, else None.
+    fig : matplotlib.figure.Figure or None
+        Dendrogram figure if ``show_plot`` is True, otherwise None.
     """
     Z = linkage(features, method=method)
 
@@ -145,14 +209,24 @@ def hierarchical_cluster(features, method="ward", max_clusters=None, show_plot=T
 # Visualisation
 # -----------------------------
 def plot_clusters(features, labels, title):
-    """
-    Plot clusters in 2D using PCA for dimensionality reduction.
+    """Visualise clusters after projecting onto first two principal components.
 
-    :param features: Array of shape (n_cells, n_features) containing the features to be plotted
-    :param labels: Array of shape (n_cells,) containing the cluster labels for each cell
-    :param title: Title for the plot
+    PCA is a quick way to reduce dimensionality for plotting.  Points are
+    colored by cluster label.
 
-    :return: Matplotlib figure object
+    Parameters
+    ----------
+    features : ndarray, shape (n_cells, n_features)
+        Feature matrix to project.
+    labels : ndarray, shape (n_cells,)
+        Cluster labels for coloring.
+    title : str
+        Plot title.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        Figure containing the scatter plot.
     """
     pca = PCA(n_components=2)
     proj = pca.fit_transform(features)
@@ -169,14 +243,25 @@ def plot_clusters(features, labels, title):
 
 
 def plot_umap(features, labels, title):
-    """
-    Plot clusters in 2D using UMAP for dimensionality reduction.
+    """Use UMAP to embed features in 2D for cluster visualisation.
 
-    :param features: Array of shape (n_cells, n_features) containing the features to be plotted
-    :param labels: Array of shape (n_cells,) containing the cluster labels for each cell
-    :param title: Title for the plot
+    UMAP often preserves local structure better than PCA and can reveal
+    nonlinear relationships between clusters.
 
-    :return: Matplotlib figure object and UMAP embedding array of shape (n_cells, 2)
+    Parameters
+    ----------
+    features : ndarray, shape (n_cells, n_features)
+        Feature matrix to embed.
+    labels : ndarray, shape (n_cells,)
+        Cluster labels for coloring.
+    title : str
+        Plot title.
+
+    Returns
+    -------
+    tuple
+        ``(fig, embedding)`` where ``fig`` is the Matplotlib figure and
+        ``embedding`` is an ndarray of shape (n_cells, 2) containing coordinates.
     """
     reducer = umap.UMAP(
         n_neighbors=5,
@@ -202,13 +287,20 @@ def plot_umap(features, labels, title):
 # Cluster summaries and reporting
 # -----------------------------
 def summarise_clusters(features, labels):
-    """
-    Summarise clusters by computing the mean feature vector for each cluster.
+    """Compute centroid (mean feature vector) for each cluster.
 
-    :param features: Array of shape (n_cells, n_features) containing the features to be summarised
-    :param labels: Array of shape (n_cells,) containing the cluster labels for each cell
+    This summary can be used to understand the typical tuning profile of each
+    group of cells.
 
-    :return: Dictionary mapping cluster labels to their mean feature vectors
+    Parameters
+    ----------
+    features : ndarray, shape (n_cells, n_features)
+    labels : ndarray, shape (n_cells,)
+
+    Returns
+    -------
+    dict
+        Mapping from cluster label to mean feature vector.
     """
     summaries = {}
     for c in np.unique(labels):
@@ -217,14 +309,22 @@ def summarise_clusters(features, labels):
 
 
 def plot_cluster_tuning(features, labels, title_prefix="Cluster"):
-    """
-    Plot tuning profiles for each cluster.
+    """Visualise average feature responses for each cluster.
 
-    :param features: Array of shape (n_cells, n_features) containing the features to be plotted
-    :param labels: Array of shape (n_cells,) containing the cluster labels for each cell
-    :param title_prefix: Prefix for the plot titles
+    Bar plots are generated showing the mean feature value across cells within
+    each cluster, which is useful when features represent tuning to covariates.
 
-    :return: List of Matplotlib figure objects for each cluster's tuning profile
+    Parameters
+    ----------
+    features : ndarray, shape (n_cells, n_features)
+    labels : ndarray, shape (n_cells,)
+    title_prefix : str
+        Prefix for plot title.
+
+    Returns
+    -------
+    list
+        List of Matplotlib figure objects, one per cluster.
     """
     n_features = features.shape[1]
     clusters = np.unique(labels)
@@ -247,12 +347,21 @@ def plot_cluster_tuning(features, labels, title_prefix="Cluster"):
 
 
 def suggest_labels(cluster_summaries):
-    """
-    Suggest functional labels for each cluster based on the most strongly tuned covariate.
+    """Generate textual descriptions of each cluster's dominant feature.
 
-    :param cluster_summaries: Dictionary mapping cluster labels to their mean feature vectors
+    Identifies the covariate with maximum absolute mean weight and reports
+    whether the tuning is positive or negative.  This is a simple heuristic for
+    assigning functional interpretations to clusters.
 
-    :return: Dictionary mapping cluster labels to suggested functional labels
+    Parameters
+    ----------
+    cluster_summaries : dict
+        Mapping cluster label to mean feature vector.
+
+    Returns
+    -------
+    dict
+        Mapping cluster label to suggested textual label.
     """
     labels = {}
     for c, vec in cluster_summaries.items():
@@ -263,38 +372,59 @@ def suggest_labels(cluster_summaries):
 
 
 def evaluate_clustering(features, labels):
-    """
-    Evaluate clustering quality using the silhouette score.
+    """Compute silhouette score as an internal measure of cluster separation.
 
-    :param features: Array of shape (n_cells, n_features) containing the features to be evaluated
-    :param labels: Array of shape (n_cells,) containing the cluster labels for each cell
+    The silhouette score ranges from -1 to +1, with higher values indicating
+    that samples are well-matched to their own cluster and poorly matched to
+    neighboring clusters.
 
-    :return: Silhouette score for the clustering
+    Parameters
+    ----------
+    features : ndarray, shape (n_cells, n_features)
+    labels : ndarray, shape (n_cells,)
+
+    Returns
+    -------
+    float
+        Silhouette score.
     """
     return silhouette_score(features, labels)
 
 
 def map_cells_to_clusters(labels, cell_ids):
-    """
-    Map cell IDs to their corresponding cluster labels.
+    """Create a dictionary mapping each unique cell ID to its cluster label.
 
-    :param labels: Array of shape (n_cells,) containing the cluster labels for each cell
-    :param cell_ids: Array of shape (n_cells,) containing the unique cell IDs
+    Useful for later lookup or exporting membership information.
 
-    :return: Dictionary mapping cell IDs to their cluster labels
+    Parameters
+    ----------
+    labels : ndarray, shape (n_cells,)
+    cell_ids : ndarray, shape (n_cells,)
+
+    Returns
+    -------
+    dict
+        Mapping cell ID -> cluster label.
     """
     unique_cells = np.unique(cell_ids)
     return {cell: labels[i] for i, cell in enumerate(unique_cells)}
 
 
 def print_cluster_membership(labels, cell_ids):
-    """
-    Print the membership of each cluster.
+    """Display cells belonging to each cluster and return the mapping.
 
-    :param labels: Array of shape (n_cells,) containing the cluster labels for each cell
-    :param cell_ids: Array of shape (n_cells,) containing the unique cell IDs
+    Parameters are same as :func:`map_cells_to_clusters`.  The printed output is
+    grouped by cluster label for easy human inspection.
 
-    :return: Dictionary mapping cell IDs to their cluster labels
+    Parameters
+    ----------
+    labels : ndarray, shape (n_cells,)
+    cell_ids : ndarray, shape (n_cells,)
+
+    Returns
+    -------
+    dict
+        Mapping cell ID -> cluster label.
     """
     mapping = map_cells_to_clusters(labels, cell_ids)
     clusters = {}
@@ -308,15 +438,26 @@ def print_cluster_membership(labels, cell_ids):
 
 
 def cluster_report(features, labels, cell_ids, title_prefix="Cluster"):
-    """
-    Generate a comprehensive report for clustering results.
+    """Produce a full textual and graphical summary of clustering results.
 
-    :param features: Array of shape (n_cells, n_features) containing the features to be evaluated
-    :param labels: Array of shape (n_cells,) containing the cluster labels for each cell
-    :param cell_ids: Array of shape (n_cells,) containing the unique cell IDs
-    :param title_prefix: String prefix for plot titles and report sections
+    This helper prints a report to the console and returns a dictionary
+    containing various artefacts such as membership mappings, cluster
+    centroids, suggested labels, and generated figures for later use.
 
-    :return: Dictionary containing cluster membership, summaries, suggested labels, and figures for tuning profiles, PCA, and UMAP
+    Parameters
+    ----------
+    features : ndarray, shape (n_cells, n_features)
+    labels : ndarray, shape (n_cells,)
+    cell_ids : ndarray, shape (n_cells,)
+    title_prefix : str
+        Prefix for report titles.
+
+    Returns
+    -------
+    dict
+        Contains keys 'membership', 'summaries', 'suggested_labels',
+        'tuning_figures', 'pca_figure', 'umap_figure', 'umap_embedding', and
+        'silhouette_score'.
     """
     print(f"\n{title_prefix} report:")
 
@@ -370,21 +511,42 @@ def run_clustering(
     title_prefix="Clustering",
     show_report=True,
 ):
-    """
-    Run the full clustering pipeline: feature extraction, normalisation, clustering, and reporting.
+    """Execute end-to-end cell clustering workflow and optionally report.
 
-    :param X: Array of shape (n_features, n_time_bins) containing the input features (covariates)
-    :param Y: Array of shape (n_time_bins,) containing the spike counts for each time bin
-    :param cell_ids: Array of all cell IDs
-    :param rec_ids: Array of all recording IDs corresponding to each cell
-    :param feature_key: String key for the feature extractor to use (e.g., "correlation" or "glm")
-    :param cluster_key: String key for the clustering method to use (e.g., "kmeans" or "hierarchical")
-    :param n_clusters: Number of clusters to form (required for KMeans, optional for hierarchical clustering)
-    :param zscore_within_subject: Whether to z-score features within each subject to control for inter-subject variability
-    :param title_prefix: Prefix for plot titles and report sections (default is "Clustering")
-    :param show_report: Whether to generate and show the clustering report (default is True)
+    This convenience function looks up the requested feature extractor and
+    clustering algorithm from the registries defined above, normalises the
+    extracted features, runs the clustering, and generates a detailed report if
+    requested.  It is designed to be a single-entry point for exploratory
+    analyses.
 
-    :return: Dictionary containing clustering results and report
+    Parameters
+    ----------
+    X : ndarray, shape (n_features, n_time_bins)
+        Covariate matrix.
+    Y : ndarray, shape (n_time_bins,)
+        Spike counts.
+    cell_ids : ndarray, shape (n_time_bins,)
+        Cell identifier per sample.
+    rec_ids : ndarray, shape (n_cells,)
+        Recording/subject ID per cell (for z-scoring).
+    feature_key : str
+        Key selecting feature extraction method.
+    cluster_key : str
+        Key selecting clustering algorithm.
+    n_clusters : int or None
+        Number of clusters for k-means or max clusters for hierarchical.
+    zscore_within_subject : bool
+        If True, z-score features within each recording.
+    title_prefix : str
+        Prefix used in plot/report titles.
+    show_report : bool
+        Whether to call ``cluster_report`` and return its output.
+
+    Returns
+    -------
+    dict
+        Contains 'features', 'scaled_features', 'labels', and 'report' (if
+        requested).
     """
 
     # 1. Look up functions from registries

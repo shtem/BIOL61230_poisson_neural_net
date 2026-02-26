@@ -3,6 +3,12 @@ import matplotlib.pyplot as plt
 
 
 def _set_journal_style():
+    """Apply consistent publication-style formatting to matplotlib figures.
+
+    This internal helper sets a seaborn-based whitegrid style and adjusts
+    rcParams for DPI, font sizes, line widths, and removes top/right spines
+    so that plots look clean in articles or presentations.
+    """
     plt.style.use("seaborn-v0_8-whitegrid")
     plt.rcParams.update(
         {
@@ -20,15 +26,27 @@ def _set_journal_style():
 
 
 def compute_psth(y, bins_per_trial=25, smooth_sigma=None):
-    """ ""
-    Compute a peri-stimulus time histogram (PSTH) from spike data.
-    PSTH is computed by averaging spike counts across trials for each time bin.
+    """Compute a peri-stimulus time histogram (PSTH).
 
-    :param y: Array of spike counts for each time bin
-    :param bins_per_trial: Number of bins per trial
-    :param smooth_sigma: Optional standard deviation for Gaussian smoothing
+    The input ``y`` contains spike counts arranged sequentially across trials.
+    This routine partitions the vector into trials of length ``bins_per_trial``
+    and then averages across the trial dimension.  A Gaussian smoother may be
+    applied optionally.
 
-    :return: Array of PSTH values for each bin
+    Parameters
+    ----------
+    y : ndarray, shape (n_time,)
+        Spike counts ordered by time bin.
+    bins_per_trial : int, optional
+        Number of bins per trial (default 25).
+    smooth_sigma : float or None, optional
+        Standard deviation for a 1d Gaussian filter; if ``None`` no smoothing
+        is performed.
+
+    Returns
+    -------
+    ndarray
+        PSTH values with length ``bins_per_trial``.
     """
     n_time = len(y)
     n_trials = n_time // bins_per_trial
@@ -49,14 +67,24 @@ def compute_psth(y, bins_per_trial=25, smooth_sigma=None):
 
 
 def plot_psth(psth_true, psth_pred, title="PSTH Comparison"):
-    """
-    Plot peri-stimulus time histogram (PSTH) comparison.
+    """Create a comparison plot of two PSTH traces.
 
-    :param psth_true: Array of true PSTH values
-    :param psth_pred: Array of predicted PSTH values
-    :param title: Title for the plot
+    The figure is closed before returning so that calling code may save or
+    display it without creating duplicate windows.
 
-    :return: Matplotlib figure object
+    Parameters
+    ----------
+    psth_true : ndarray
+        Ground truth PSTH values.
+    psth_pred : ndarray
+        Model-generated PSTH values.
+    title : str, optional
+        Plot title.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        The figure object containing the PSTH comparison.
     """
     fig, ax = plt.subplots(figsize=(6, 4))
 
@@ -77,6 +105,23 @@ def plot_psth(psth_true, psth_pred, title="PSTH Comparison"):
 def plot_ytrue_vs_ypred(
     y_true, y_pred, title="", xlabel="True spike count", ylabel="Predicted spike count"
 ):
+    """Scatter plot comparing true versus predicted spike counts.
+
+    A unity line is added for reference.  The journal style is applied to
+    ensure consistent aesthetics.
+
+    Parameters
+    ----------
+    y_true : ndarray
+    y_pred : ndarray
+    title : str, optional
+    xlabel : str, optional
+    ylabel : str, optional
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+    """
     _set_journal_style()
     fig, ax = plt.subplots(figsize=(4, 4))
 
@@ -98,6 +143,21 @@ def plot_ytrue_vs_ypred(
 def compare_models_for_cell(
     glm_results, xgb_results, nn_results, tl_results, cell, split="test"
 ):
+    """Scatter-plot grid comparing model predictions for a single cell.
+
+    Parameters
+    ----------
+    glm_results, xgb_results, nn_results, tl_results : dict
+        Results dictionaries keyed by cell containing predictions and metrics.
+    cell : int
+        Cell identifier to plot.
+    split : str, optional
+        Dataset split to use ("train","val","test").
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+    """
     _set_journal_style()
 
     fig, axes = plt.subplots(2, 2, figsize=(8, 7), sharex=True, sharey=True)
@@ -139,6 +199,19 @@ def compare_models_for_cell(
 def compare_r2_across_cells(
     glm_results, xgb_results, nn_results, tl_results, split="test"
 ):
+    """Line plot of pseudo‑R² values across cells for each model.
+
+    Parameters
+    ----------
+    glm_results, xgb_results, nn_results, tl_results : dict
+        Results dictionaries keyed by cell containing metrics.
+    split : str, optional
+        Dataset split to use when extracting pseudo‑R².
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+    """
     _set_journal_style()
     cells = sorted(glm_results.keys())
     glm_r2 = [glm_results[c][split]["pseudo_r2"] for c in cells]
@@ -164,6 +237,26 @@ def compare_r2_across_cells(
 
 
 def plot_training_curves(train_losses=None, val_losses=None, title="Training curves"):
+    """Plot training (and optionally validation) loss over epochs.
+
+    If ``train_losses`` is ``None`` the function returns immediately.  The plot
+    is closed before return so that callers can save the figure without
+    displaying it.
+
+    Parameters
+    ----------
+    train_losses : sequence or None
+        Training loss values per epoch.
+    val_losses : sequence or None, optional
+        Validation loss values per epoch.
+    title : str, optional
+        Figure title.
+
+    Returns
+    -------
+    matplotlib.figure.Figure or None
+        Figure object when ``train_losses`` is provided, otherwise ``None``.
+    """
     if train_losses is None:
         return None
 

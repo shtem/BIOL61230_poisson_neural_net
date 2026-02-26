@@ -1,21 +1,33 @@
-from sklearn.metrics import mean_poisson_deviance
-import matplotlib.pyplot as plt
 import numpy as np
+from sklearn.metrics import mean_poisson_deviance
 
 
 def pseudo_r2(y_true, y_pred):
-    """
-    Calculate pseudo-R2 for Poisson regression model predictions.
-    R2_pseudo = 1 - (deviance_model / deviance_null)
-    where deviance_null is the deviance of a null model that
-    predicts the mean firing rate
+    """Compute the pseudo-R² for Poisson regression.
 
-    :param y_true: Array of true spike counts
-    :param y_pred: Array of predicted spike counts
+    The pseudo‑R² statistic is defined as::
 
-    :return: Pseudo-R2 value (between 0 and 1, higher is better)
+        R2_pseudo = 1 - (deviance_model / deviance_null)
+
+    where ``deviance_null`` is the mean Poisson deviance of a null model that
+    always predicts the mean of ``y_true``. This measure behaves similarly to
+    the classical R² in linear regression but is appropriate when the response
+    follows a Poisson distribution.
+
+    Parameters
+    ----------
+    y_true : array-like
+        Observed spike counts (non-negative integers).
+    y_pred : array-like
+        Predicted firing rates (non-negative floats).
+
+    Returns
+    -------
+    float
+        Pseudo-R² value. Values closer to 1 indicate better fit; the statistic
+        can be negative if the model performs worse than the null model.
     """
-    # null model predicts mean firing rate
+    # construct null prediction array equal to the mean of the true values
     y_null = np.full_like(y_true, y_true.mean())
 
     dev_model = mean_poisson_deviance(y_true, y_pred)
@@ -25,18 +37,29 @@ def pseudo_r2(y_true, y_pred):
 
 
 def poisson_log_likelihood(y_true, y_pred):
-    """
-    Compute the log-likelihood for a Poisson distribution.
-    logL = sum(y_true * log(y_pred) - y_pred)
-    where y_pred is the predicted firing rate and y_true
-    is the observed spike count.
+    """Calculate the log-likelihood under a Poisson model.
 
-    :param y_true: Array of true spike counts
-    :param y_pred: Array of predicted spike counts
+    The log-likelihood for each observation is::
 
-    :return: Log-likelihood value (higher is better)
+        logL_i = y_true_i * log(y_pred_i) - y_pred_i
+
+    where ``y_pred`` represents the predicted rate and ``y_true`` the
+    observed count.  The total log-likelihood is the sum across samples. This
+    quantity is useful for model comparison and can be negative.
+
+    Parameters
+    ----------
+    y_true : array-like
+        Observed counts.
+    y_pred : array-like
+        Predicted rates; values are clipped to avoid taking ``log(0)``.
+
+    Returns
+    -------
+    float
+        Sum of log-likelihoods over the provided observations.
     """
-    # avoid log(0)
+    # avoid log(0) by forcing a small positive lower bound on predictions
     eps = 1e-12
     y_pred = np.clip(y_pred, eps, None)
 
@@ -45,21 +68,29 @@ def poisson_log_likelihood(y_true, y_pred):
 
 
 def evaluate_poisson_model(y_true, y_pred):
-    """
-    Comprehensive evaluation of Poisson model predictions,
-    including pseudo-R2, log-likelihood, and deviance.
+    """Evaluate Poisson regression predictions with standard metrics.
 
-    :param y_true: Array of true spike counts
-    :param y_pred: Array of predicted spike counts
-    :param bins_per_trial: Number of bins per trial for PSTH computation
-    :param smooth_sigma: Standard deviation for Gaussian smoothing of PSTH
+    This wrapper combines the fundamental evaluation utilities defined above
+    and returns a dictionary so that results can be stored alongside models or
+    displayed in summaries.
 
-    :return: Dictionary of evaluation metrics and PSTH figure
+    Parameters
+    ----------
+    y_true : array-like
+        Ground-truth spike counts.
+    y_pred : array-like
+        Model predictions (rates).  Values are clipped to ensure positivity.
+
+    Returns
+    -------
+    dict
+        Contains the keys ``"pseudo_r2"``, ``"log_likelihood"`` and
+        ``"deviance"`` with the corresponding numeric results.
     """
-    # Ensure strictly positive predictions
+    # clip to avoid zero or negative predictions which break evaluation
     y_pred = np.clip(y_pred, 1e-8, None)
 
-    # core metrics
+    # compute each metric using helper functions
     r2 = pseudo_r2(y_true, y_pred)
     ll = poisson_log_likelihood(y_true, y_pred)
     dev = mean_poisson_deviance(y_true, y_pred)

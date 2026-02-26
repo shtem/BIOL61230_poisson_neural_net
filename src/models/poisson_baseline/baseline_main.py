@@ -1,9 +1,9 @@
 import numpy as np
-from sklearn.linear_model import PoissonRegressor
 from xgboost import XGBRegressor
+from sklearn.linear_model import PoissonRegressor
 from src.models.utils import fit_model_per_cell
-from src.get_data import prepare_cellwise_datasets, flatten_cellwise_data
 from src.models.hyperparam_search import grid_search_per_cell
+from src.get_data import prepare_cellwise_datasets, flatten_cellwise_data
 
 
 def fit_poisson_glm(
@@ -17,19 +17,45 @@ def fit_poisson_glm(
     val_frac=0.15,
     k_folds=3,
 ):
+    """Baseline per-cell Poisson generalized linear model.
+
+    Two operation modes are supported:
+
+    * ``grid_search=False``: fit a single GLM per cell using supplied ``alpha``.
+    * ``grid_search=True``: perform per-cell k-fold CV over a set of ``alpha``
+      values and refit the best model.
+
+    The feature matrix ``X`` is expected to have shape
+    ``(n_features, n_time_bins)`` while ``Y`` is ``(n_time_bins,)``.  ``cell_ids``
+    assigns each bin to a particular cell.
+
+    Parameters
+    ----------
+    X : ndarray
+        Feature matrix, columns = time bins.
+    Y : ndarray
+        Response vector of spike counts.
+    cell_ids : ndarray
+        Cell identifiers for each time bin.
+    alpha : float
+        Regularization strength for PoissonRegressor when not tuning.
+    alpha_grid : list or None
+        List of candidate alphas used during grid search.
+    grid_search : bool
+        Whether to tune ``alpha`` per cell.
+    train_frac, val_frac : float
+        Train/validation split proportions.
+    k_folds : int
+        Number of folds for cross-validation during grid search.
+
+    Returns
+    -------
+    dict
+        ``{"results": ..., "best_params": ..., "all_scores": ...}``.
     """
-    Fit a Poisson GLM baseline model for each cell.
 
-    :param X: Array of shape (n_features, n_time_bins) containing the input features (covariates)
-    :param Y: Array of shape (n_time_bins,) containing the target values (spike counts)
-    :param cell_ids: Array of all cell IDs
-    :param train_frac: Fraction of samples to use for training (default 0.7)
-    :param val_frac: Fraction of samples to use for validation (default 0.15)
-    :param alpha: Regularization strength (default 0.0)
-
-    :return: Dictionary containing fitted models, coefficients, and performance metrics for each cell
-    """
-
+    # split data into train/val/test sets per cell; validation only required if
+    # performing grid search.
     Xtr, Ytr, Xv, Yv, Xte, Yte = prepare_cellwise_datasets(
         X,
         Y,
@@ -38,8 +64,12 @@ def fit_poisson_glm(
         val_frac=val_frac,
         use_val=grid_search,  # only use val if grid search is on
     )
+    # flatten structure for search utilities
     Xtr_flat, Ytr_flat, cell_ids_tr_flat = flatten_cellwise_data(Xtr, Ytr)
 
+    # -------------------------
+    # MODE A — fixed alpha for all cells
+    # -------------------------
     if not grid_search:
         glm_kwargs = {"alpha": alpha, "max_iter": 2000}
 
@@ -63,11 +93,13 @@ def fit_poisson_glm(
     # -------------------------
     # MODE B — PER-CELL GRID SEARCH
     # -------------------------
+    # prepare alpha candidates if none provided
     if alpha_grid is None:
         alpha_grid = [0.0, 0.01, 0.1, 1.0]
 
     model_param_grid = {"alpha": alpha_grid}
 
+    # perform grid search separately for each cell
     gs = grid_search_per_cell(
         Xtr_flat,
         Ytr_flat,
@@ -80,7 +112,7 @@ def fit_poisson_glm(
 
     best_params = gs["best_params"]
 
-    # Fit final models per cell
+    # Fit final models per cell using selected alpha values
     final_results = {}
     for cell in np.unique(cell_ids):
         glm_kwargs = {
@@ -117,19 +149,31 @@ def fit_poisson_xgboost(
     k_folds=3,
     **kwargs,
 ):
+    """Baseline per-cell XGBoost with Poisson objective.
+
+    Works similarly to ``fit_poisson_glm`` but uses an XGBRegressor.  When
+    ``grid_search`` is enabled it performs per-cell cross-validated tuning on
+    the hyperparameters supplied via ``param_grid``.
+
+    Parameters
+    ----------
+    X, Y, cell_ids : array-like
+        Data matrices and identifiers as in ``fit_poisson_glm``.
+    param_grid : dict or None
+        Hyperparameter grid for ``XGBRegressor``.
+    grid_search : bool
+        If True, runs tuning; otherwise uses default/global params.
+    kwargs :
+        Extra parameters forwarded to ``XGBRegressor`` constructor when not
+        tuning.
+
+    Returns
+    -------
+    dict
+        Same structure as ``fit_poisson_glm``.
     """
-    Fit a Poisson XGBoost baseline model for each cell.
 
-    :param X: Array of shape (n_features, n_time_bins) containing the input features (covariates)
-    :param Y: Array of shape (n_time_bins,) containing the target values (spike counts)
-    :param cell_ids: Array of all cell IDs
-    :param train_frac: Fraction of samples to use for training (default 0.7)
-    :param val_frac: Fraction of samples to use for validation (default 0.15)
-    :param kwargs: Additional keyword arguments to be passed to the XGBRegressor constructor
-
-    :return: Dictionary containing fitted models, coefficients, and performance metrics for each cell
-    """
-
+    # prepare datasets as before
     Xtr, Ytr, Xv, Yv, Xte, Yte = prepare_cellwise_datasets(
         X,
         Y,
@@ -153,6 +197,7 @@ def fit_poisson_xgboost(
             colsample_bytree=0.8,
             tree_method="hist",
         )
+        # allow caller to override defaults
         default_params.update(kwargs)
 
         results = fit_model_per_cell(
@@ -184,6 +229,7 @@ def fit_poisson_xgboost(
 
     model_param_grid = param_grid
 
+    # tune parameters for each cell independently
     gs = grid_search_per_cell(
         Xtr_flat,
         Ytr_flat,
@@ -196,6 +242,7 @@ def fit_poisson_xgboost(
 
     best_params = gs["best_params"]
 
+    # re-fit final models using chosen params and fixed bookkeeping settings
     final_results = {}
     for cell in np.unique(cell_ids):
         params = best_params[cell]["model_params"].copy()
