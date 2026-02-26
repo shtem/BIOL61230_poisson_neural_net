@@ -311,7 +311,9 @@ def fit_poisson_nn_transfer_learning(
     -------
     dict
         Includes ``results`` keyed by cell, ``best_params`` and optionally
-        ``all_scores`` from grid search.
+        ``all_scores`` from grid search.  When ``grid_search`` is True the
+        search is restricted to the 85% training split to prevent information
+        from the final test set leaking into hyperparameter selection.
     """
     unique_cells = np.unique(cell_ids)
     n_cells = len(unique_cells)
@@ -320,6 +322,9 @@ def fit_poisson_nn_transfer_learning(
     # ------------------------------------------------------------
     # Proper train/test split for TL (no val)
     # ------------------------------------------------------------
+    # We reserve 15% of the data as a final test set that is **never**
+    # touched during hyperparameter tuning.  Grid search will only see the
+    # remaining 85% (see below) to prevent any leakage of test-set samples.
     Xtr, Ytr, _, _, Xte, Yte = prepare_cellwise_datasets(
         X,
         Y,
@@ -398,11 +403,18 @@ def fit_poisson_nn_transfer_learning(
     # ------------------------------------------------------------
     # MODE B — GRID SEARCH
     # ------------------------------------------------------------
-    # perform a joint grid search over model and trainer parameters
+    # Grid search should operate only on the *training* portion defined above.
+    # To achieve this we flatten the per‑cell dictionaries returned by the
+    # initial split and pass them to the search routine. The grid search itself
+    # will perform its own inner train/validation split on this subset.
+    Xtr_flat, Ytr_flat, cell_ids_tr_flat = flatten_cellwise_data(Xtr, Ytr)
+
+    # perform a joint grid search over model and trainer parameters using
+    # training-only data to avoid leakage from the held‑out test set
     gs = grid_search_transfer_learning(
-        X,
-        Y,
-        cell_ids,
+        Xtr_flat,
+        Ytr_flat,
+        cell_ids_tr_flat,
         model_class=lambda n_features, n_cells, **kw: SharedHiddenPoissonNN(
             n_features, kw["hidden_sizes"], n_cells
         ),

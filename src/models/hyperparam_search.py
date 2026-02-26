@@ -278,10 +278,19 @@ def grid_search_transfer_learning(
     """Grid search hyperparameters for a transfer‑learning architecture.
 
     This function differs from ``grid_search_per_cell`` in that it handles a
-    special transfer-learning model trained jointly across cells.  We only use
-    the training portion of the data (no validation/test) to avoid leakage;
-    the final evaluation happens on the same split that will be used by the
-    production model.
+    shared-hidden transfer-learning model trained jointly across all cells.
+    Instead of a single train/test split, the search now performs a proper
+    train/validation partition (70/15 by default) for each cell.  The
+    validation fold is used for scoring during hyperparameter evaluation, which
+    better approximates how the final model will generalize and prevents
+    ``trainer`` settings from being selected based on the test set.
+
+    After training with each candidate parameter pair, we compute
+    pseudo‑R² separately for every cell on the validation data and aggregate
+    the per-cell scores (currently using the median) to choose the
+    best combination.  This reduces the influence of outlier cells compared to
+    the previous mean‑based strategy and should produce models that are more
+    uniformly good across the population.
 
     Parameters
     ----------
@@ -303,7 +312,6 @@ def grid_search_transfer_learning(
         Same structure as ``grid_search_per_cell``: best parameters and all
         observed scores.
     """
-
     model_param_combos = _expand_param_grid(model_param_grid)
     trainer_param_combos = _expand_param_grid(trainer_param_grid)
 
@@ -314,26 +322,32 @@ def grid_search_transfer_learning(
     n_features = X.shape[0]
 
     # ------------------------------------------------------------
-    # Use SAME train split as final TL model
+    # Use a proper train/val split (no test) for hyperparam search
     # ------------------------------------------------------------
-    Xtr, Ytr, _, _, _, _ = prepare_cellwise_datasets(
+    # Each cell is split independently; the validation data will be used to
+    # score hyperparameter combinations, leaving a separate test set untouched
+    # until final evaluation.
+    Xtr, Ytr, Xv, Yv, _, _ = prepare_cellwise_datasets(
         X,
         Y,
         cell_ids,
-        train_frac=0.85,
-        val_frac=0.0,
-        use_val=False,
+        train_frac=0.7,
+        val_frac=0.15,
+        use_val=True,
     )
 
-    # Optional scaling per cell on training-only data
+    # Optional scaling per cell: fit on train, apply to train+val
     if scaler is not None:
         for cell in unique_cells:
             sc = scaler()
             Xtr[cell] = sc.fit_transform(Xtr[cell])
+            Xv[cell] = sc.transform(Xv[cell])
 
-    # Convert dictionary to ordered lists for consistent indexing
-    X_cells = [Xtr[cell] for cell in unique_cells]
-    Y_cells = [Ytr[cell] for cell in unique_cells]
+    # Dict → list in fixed cell order
+    X_cells_train = [Xtr[cell] for cell in unique_cells]
+    Y_cells_train = [Ytr[cell] for cell in unique_cells]
+    X_cells_val = [Xv[cell] for cell in unique_cells]
+    Y_cells_val = [Yv[cell] for cell in unique_cells]
 
     # ------------------------------------------------------------
     # Evaluate each combination
@@ -347,25 +361,43 @@ def grid_search_transfer_learning(
             model = model_class(n_features=n_features, n_cells=n_cells, **mp)
             trainer = TransferLearningTrainer(**tp)
 
-            # Train the transfer-learning model
-            out = trainer.train(model, X_cells, Y_cells)
+            # Train on the training split
+            out = trainer.train(model, X_cells_train, Y_cells_train)
             model = out[0] if isinstance(out, tuple) else out
 
-            # Evaluate on the same training split, cell-by-cell
-            cell_scores = []
+            # Evaluate on the validation split, cell-by-cell
+            # each head is scored separately so we can inspect per-cell
+            # performance later; this also allows robust aggregation.
+            cell_scores = {}
             for ci, cell in enumerate(unique_cells):
-                Xc = torch.tensor(X_cells[ci], dtype=torch.float32)
+                Xc_val = torch.tensor(X_cells_val[ci], dtype=torch.float32)
+                y_true = Y_cells_val[ci]
+
                 model.eval()
                 with torch.no_grad():
-                    y_pred = model(Xc, ci).cpu().numpy()
-                y_true = Y_cells[ci]
+                    y_pred = model(Xc_val, ci).cpu().numpy()
+
                 score = pseudo_r2(y_true, y_pred)
-                cell_scores.append(score)
+                cell_scores[cell] = score
 
-            all_scores[frozen] = np.mean(cell_scores)
+            all_scores[frozen] = cell_scores
 
-    # Select best params based on averaged score across cells
-    best_combo = max(all_scores, key=all_scores.get)
+    # ------------------------------------------------------------
+    # Select best params based on aggregate across cells
+    # (here: median pseudo‑R² for robustness to outliers)
+    # Multiple aggregation strategies could be used; median is less sensitive
+    # to a few poorly-predicted cells than a simple mean.
+    # ------------------------------------------------------------
+    best_combo = None
+    best_agg_score = -np.inf
+
+    for frozen, cell_scores in all_scores.items():
+        scores = np.array(list(cell_scores.values()))
+        agg = np.median(scores)  # could also use np.mean, weighted mean, etc.
+        if agg > best_agg_score:
+            best_agg_score = agg
+            best_combo = frozen
+
     best_model_params = dict(best_combo[0])
     best_trainer_params = dict(best_combo[1])
 
