@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from pathlib import Path
 
 
 def _set_journal_style():
@@ -141,53 +142,60 @@ def plot_ytrue_vs_ypred(
 
 
 def compare_models_for_cell(
-    glm_results, xgb_results, nn_results, tl_results, cell, split="test"
+    model_results_list,
+    cell,
+    split="test",
 ):
-    """Scatter-plot grid comparing model predictions for a single cell.
+    """Scatter-plot grid comparing predictions for one cell across many models.
 
     Parameters
     ----------
-    glm_results, xgb_results, nn_results, tl_results : dict
-        Results dictionaries keyed by cell containing predictions and metrics.
+    model_results_list : list of tuples
+        Each tuple contains ``(results_dict, model_name)`` where
+        ``results_dict`` is the dictionary returned by any of the
+        :mod:`fit_*` wrappers.  ``model_name`` will be used for titles and
+        file labels.
     cell : int
-        Cell identifier to plot.
+        Identifier of the cell to visualise.
     split : str, optional
-        Dataset split to use ("train","val","test").
+        Which data split to plot (``"train"``, ``"val"`` or ``"test"``).
 
     Returns
     -------
     matplotlib.figure.Figure
+        Figure containing a grid of scatter panels, one per model.
     """
     _set_journal_style()
 
-    fig, axes = plt.subplots(2, 2, figsize=(8, 7), sharex=True, sharey=True)
-    axes = axes.flatten()
+    n_models = len(model_results_list)
+    # choose grid shape automatically (square-ish)
+    cols = int(np.ceil(np.sqrt(n_models)))
+    rows = int(np.ceil(n_models / cols))
 
-    model_list = [
-        (glm_results, "GLM"),
-        (xgb_results, "XGBoost"),
-        (nn_results, "Neural Network"),
-        (tl_results, "Transfer Learning NN"),
-    ]
+    fig, axes = plt.subplots(
+        rows, cols, figsize=(4 * cols, 3.5 * rows), sharex=True, sharey=True
+    )
+    axes = np.array(axes).reshape(-1)  # flatten even if single row/col
 
-    for ax, (results, name) in zip(axes, model_list):
-
-        # Transfer learning uses y_test / y_pred_test only
-        if name == "Transfer Learning NN":
-            y_true = results[cell]["y_test"]
-            y_pred = results[cell]["y_pred_test"]
+    for ax, (results, name) in zip(axes, model_results_list):
+        # decide which y arrays to use
+        if "y_test" in results[cell]:
+            y_true = results[cell].get(f"y_{split}", results[cell]["y_test"])
+            y_pred = results[cell].get(f"y_pred_{split}", results[cell]["y_pred_test"])
         else:
             y_true = results[cell][f"y_{split}"]
             y_pred = results[cell][f"y_pred_{split}"]
 
         ax.scatter(y_true, y_pred, alpha=0.4, s=10, edgecolor="none")
-
         lims = [min(y_true.min(), y_pred.min()), max(y_true.max(), y_pred.max())]
         ax.plot(lims, lims, "k--", linewidth=1)
-
         ax.set_title(f"{name} — Cell {cell}")
         ax.set_xlabel("True")
         ax.set_ylabel("Predicted")
+
+    # hide any unused axes
+    for ax in axes[n_models:]:
+        ax.axis("off")
 
     fig.suptitle(f"Model comparison — Cell {cell} ({split})", y=1.02)
     fig.tight_layout()
@@ -197,33 +205,33 @@ def compare_models_for_cell(
 
 
 def compare_r2_across_cells(
-    glm_results, xgb_results, nn_results, tl_results, split="test"
+    model_results_list,
+    split="test",
 ):
-    """Line plot of pseudo‑R² values across cells for each model.
+    """Line plot of pseudo‑R² values across cells for an arbitrary set of models.
 
     Parameters
     ----------
-    glm_results, xgb_results, nn_results, tl_results : dict
-        Results dictionaries keyed by cell containing metrics.
+    model_results_list : list of tuples
+        ``(results_dict, model_name)`` pairs for each model to include.
     split : str, optional
-        Dataset split to use when extracting pseudo‑R².
+        Which split to use when extracting pseudo‑R².
 
     Returns
     -------
     matplotlib.figure.Figure
     """
     _set_journal_style()
-    cells = sorted(glm_results.keys())
-    glm_r2 = [glm_results[c][split]["pseudo_r2"] for c in cells]
-    xgb_r2 = [xgb_results[c][split]["pseudo_r2"] for c in cells]
-    nn_r2 = [nn_results[c][split]["pseudo_r2"] for c in cells]
-    tl_r2 = [tl_results[c][split]["pseudo_r2"] for c in cells]
+
+    # assume all dicts share the same cell keys
+    first_results = model_results_list[0][0]
+    cells = sorted(first_results.keys())
 
     fig, ax = plt.subplots(figsize=(7, 3.5))
-    ax.plot(cells, glm_r2, label="GLM", marker="o")
-    ax.plot(cells, xgb_r2, label="XGBoost", marker="o")
-    ax.plot(cells, nn_r2, label="Neural Network", marker="o")
-    ax.plot(cells, tl_r2, label="Transfer Learning NN", marker="o")
+
+    for results, name in model_results_list:
+        r2 = [results[c][split]["pseudo_r2"] for c in cells]
+        ax.plot(cells, r2, label=name, marker="o")
 
     ax.set_xlabel("Cell ID")
     ax.set_ylabel(f"{split.capitalize()} pseudo-R²")
@@ -232,7 +240,6 @@ def compare_r2_across_cells(
     fig.tight_layout()
 
     plt.close(fig)
-
     return fig
 
 
@@ -277,3 +284,56 @@ def plot_training_curves(train_losses=None, val_losses=None, title="Training cur
 
     plt.close(fig)
     return fig
+
+
+def journal_plot_pack(
+    model_results_list,
+    cells,
+    split="test",
+    base_dir="data/results/journal",
+):
+    """Generate per-cell comparison plots for a set of models and save them.
+
+    This convenience routine iterates over the provided ``cells`` list,
+    produces a comparison figure for each cell using
+    :func:`compare_models_for_cell`, generates a cross-cell R² plot via
+    :func:`compare_r2_across_cells`, and writes all figures to disk.
+    Returns a list of file paths that were created.
+
+    Parameters
+    ----------
+    model_results_list : list of tuples
+        ``(results_dict, model_name)`` pairs, as accepted by
+        :func:`compare_models_for_cell` and :func:`compare_r2_across_cells`.
+    cells : sequence
+        Cell identifiers to plot per-cell comparisons for.
+    split : str, optional
+        Dataset split name to supply to the comparison functions.
+    base_dir : str or Path, optional
+        Directory under which the plots are saved.
+
+    Returns
+    -------
+    list of pathlib.Path
+        Paths to all saved image files (per-cell + R² summary).
+    """
+    from src.train.io import save_plot
+
+    base_dir = Path(base_dir)
+    base_dir.mkdir(parents=True, exist_ok=True)
+
+    saved = []
+
+    # Generate per-cell comparison plots
+    for cell in cells:
+        fig = compare_models_for_cell(model_results_list, cell, split=split)
+        fname = f"cell_{cell}.png"
+        path = save_plot(fig, "journal", fname, base_dir=base_dir)
+        saved.append(path)
+
+    # Generate cross-cell R² summary plot
+    fig_r2 = compare_r2_across_cells(model_results_list, split=split)
+    path_r2 = save_plot(fig_r2, "journal", "r2_summary.png", base_dir=base_dir)
+    saved.append(path_r2)
+
+    return saved
