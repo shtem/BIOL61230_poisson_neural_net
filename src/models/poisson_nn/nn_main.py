@@ -91,6 +91,7 @@ def fit_poisson_nn(
     train_frac=0.7,
     val_frac=0.15,
     scaler=None,
+    verbose=False,
 ):
     """Train independent Poisson neural nets for each cell.
 
@@ -120,6 +121,8 @@ def fit_poisson_nn(
         Fractions of data allocated to training and validation sets.
     scaler : callable or None
         Optional feature scaler applied independently per cell.
+    verbose : bool, optional
+        If True, print dataset splits and hyperparameter search progress.
 
     Returns
     -------
@@ -132,6 +135,10 @@ def fit_poisson_nn(
     # 1. Prepare datasets (validation only if grid_search=True)
     # ------------------------------------------------------------
     use_val = True
+    if verbose:
+        print(
+            f"Preparing datasets with train_frac={train_frac}, val_frac={val_frac}, use_val={use_val}"
+        )
 
     Xtr, Ytr, Xv, Yv, Xte, Yte = prepare_cellwise_datasets(
         X,
@@ -216,6 +223,10 @@ def fit_poisson_nn(
         return run_trainer(trainer, model, Xtr_c, ytr_c, Xv_c, yv_c)
 
     # perform per-cell cross-validated grid search
+    if verbose:
+        print("Starting per-cell grid search")
+        print("model_param_grid=", model_param_grid)
+        print("trainer_param_grid=", trainer_param_grid)
     gs = grid_search_per_cell(
         Xtr_flat,
         Ytr_flat,
@@ -226,9 +237,12 @@ def fit_poisson_nn(
         k_folds=k_folds,
         scaler=scaler,
         custom_train_fn=gs_train_fn,
+        verbose=verbose,
     )
 
     best_params = gs["best_params"]
+    if verbose:
+        print("Per-cell grid search best_params:", best_params)
 
     # ------------------------------------------------------------
     # Fit final models using best hyperparameters
@@ -283,6 +297,7 @@ def fit_poisson_nn_transfer_learning(
     batch_size="auto",
     patience=10,
     scaler=None,
+    verbose=False,
 ):
     """Train a shared‑hidden PoissonNN across multiple cells (transfer learning).
 
@@ -306,6 +321,8 @@ def fit_poisson_nn_transfer_learning(
         ``TransferLearningTrainer``.
     scaler : callable or None
         Optional per-cell feature scaler.
+    verbose : bool, optional
+        If True, print dataset information and grid-search progress.
 
     Returns
     -------
@@ -318,6 +335,9 @@ def fit_poisson_nn_transfer_learning(
     unique_cells = np.unique(cell_ids)
     n_cells = len(unique_cells)
     n_features = X.shape[0]
+
+    if verbose:
+        print(f"TL fit called with {len(unique_cells)} cells, {n_features} features")
 
     # ------------------------------------------------------------
     # Proper train/test split for TL (no val)
@@ -411,6 +431,11 @@ def fit_poisson_nn_transfer_learning(
 
     # perform a joint grid search over model and trainer parameters using
     # training-only data to avoid leakage from the held‑out test set
+    if verbose:
+        print("Starting TL grid search on flattened training set")
+        print("model_param_grid=", model_param_grid)
+        print("trainer_param_grid=", trainer_param_grid)
+        print(f"training set size: {Xtr_flat.shape}, labels: {cell_ids_tr_flat.shape}")
     gs = grid_search_transfer_learning(
         Xtr_flat,
         Ytr_flat,
@@ -421,10 +446,17 @@ def fit_poisson_nn_transfer_learning(
         model_param_grid=model_param_grid,
         trainer_param_grid=trainer_param_grid,
         scaler=scaler,
+        verbose=verbose,
     )
 
     best_mp = gs["best_params"]["model_params"]
     best_tp = gs["best_params"]["trainer_params"]
+    if verbose:
+        print("Grid-search returned best_params:", gs["best_params"])
+        # optionally inspect all_scores dictionary
+        from pprint import pprint
+
+        pprint(gs.get("all_scores", {}))
 
     # Fit final TL model on train split using found hyperparameters
     model = SharedHiddenPoissonNN(n_features, best_mp["hidden_sizes"], n_cells)

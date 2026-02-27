@@ -60,6 +60,7 @@ def cross_validate_model_per_cell(
     scaler=None,
     custom_train_fn=None,
     trainer_params=None,
+    verbose=False,
 ):
     """Perform k-fold cross-validation separately for each cell.
 
@@ -91,6 +92,8 @@ def cross_validate_model_per_cell(
         return a trained model.
     trainer_params : dict or None
         Additional parameters passed to ``custom_train_fn``.
+    verbose : bool, optional
+        If True, print progress information for each cell and fold.
 
     Returns
     -------
@@ -105,12 +108,16 @@ def cross_validate_model_per_cell(
 
     # iterate through cells and perform internal k-fold procedure
     for cell in unique_cells:
+        if verbose:
+            print(f"Cross-validating cell {cell}")
         Xc = X[:, cell_ids == cell].T  # features for this cell (samples x features)
         yc = Y[cell_ids == cell]
 
         fold_scores = []
 
-        for train_idx, val_idx in KFold(k_folds).split(Xc):
+        for fold_idx, (train_idx, val_idx) in enumerate(KFold(k_folds).split(Xc)):
+            if verbose:
+                print(f"  Fold {fold_idx+1}/{k_folds}")
             # split data for this fold
             X_train, X_val = Xc[train_idx], Xc[val_idx]
             y_train, y_val = yc[train_idx], yc[val_idx]
@@ -156,6 +163,7 @@ def grid_search_per_cell(
     k_folds=3,
     scaler=None,
     custom_train_fn=None,
+    verbose=False,
 ):
     """Perform grid search on both model and trainer hyperparameters per cell.
 
@@ -186,6 +194,8 @@ def grid_search_per_cell(
         Feature scaler factory applied per cell.
     custom_train_fn : callable or None, optional
         If provided, will be passed through to the CV routine.
+    verbose : bool, optional
+        If True, print progress messages during the search.
 
     Returns
     -------
@@ -220,6 +230,9 @@ def grid_search_per_cell(
             _freeze_params(trainer_params),
         )
 
+        if verbose:
+            print("Evaluating combo", model_params, trainer_params)
+
         # wrapper ignores kw because grid search handles parameters separately
         def _model_class_wrapper(**kw):
             return model_class(**model_params)
@@ -234,6 +247,7 @@ def grid_search_per_cell(
             scaler=scaler,
             custom_train_fn=custom_train_fn,
             trainer_params=trainer_params,
+            verbose=verbose,
         )
 
         all_scores[frozen] = scores
@@ -243,6 +257,8 @@ def grid_search_per_cell(
     unique_cells = np.unique(cell_ids)
 
     for cell in unique_cells:
+        if verbose:
+            print(f"Selecting best params for cell {cell}")
         best_score = -np.inf
         best_combo = None
 
@@ -274,6 +290,7 @@ def grid_search_transfer_learning(
     model_param_grid,
     trainer_param_grid,
     scaler=None,
+    verbose=False,
 ):
     """Grid search hyperparameters for a transfer‑learning architecture.
 
@@ -305,6 +322,9 @@ def grid_search_transfer_learning(
         Grid of parameters for ``TransferLearningTrainer``.
     scaler : callable or None, optional
         If provided, each cell's features in the training split are scaled.
+    verbose : bool, optional
+        If True, print progress messages while evaluating parameter
+        combinations and aggregate scores.
 
     Returns
     -------
@@ -357,6 +377,9 @@ def grid_search_transfer_learning(
 
             frozen = (_freeze_params(mp), _freeze_params(tp))
 
+            if verbose:
+                print("Evaluating TL combo", mp, tp)
+
             # Build model + trainer instances
             model = model_class(n_features=n_features, n_cells=n_cells, **mp)
             trainer = TransferLearningTrainer(**tp)
@@ -381,6 +404,10 @@ def grid_search_transfer_learning(
                 cell_scores[cell] = score
 
             all_scores[frozen] = cell_scores
+            if verbose:
+                scores_arr = np.array(list(cell_scores.values()))
+                print(" -> per-cell median", np.median(scores_arr))
+                print(" -> per-cell mean", np.mean(scores_arr))
 
     # ------------------------------------------------------------
     # Select best params based on aggregate across cells

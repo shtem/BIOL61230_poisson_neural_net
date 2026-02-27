@@ -148,8 +148,8 @@ class PoissonTrainer(BaseTrainer):
                 preds = model(xb)  # forward pass: compute model outputs
                 loss = criterion(preds, yb)  # compute Poisson NLL loss
                 if self.l1_lambda > 0:
-                    # include L1 penalty on weights if requested
-                    loss = loss + self._l1_penalty(model)
+                    # include L1 penalty on weights if requested, scaled by lambda
+                    loss = loss + self.l1_lambda * self._l1_penalty(model)
                 loss.backward()  # backpropagate gradients
                 optimiser.step()  # update weights using optimizer
                 epoch_loss += loss.item()  # accumulate scalar loss
@@ -268,8 +268,8 @@ class TransferLearningTrainer(BaseTrainer):
                     preds = model(xb, ci)  # forward pass including cell index
                     loss = criterion(preds, yb)  # compute loss for this batch
                     if self.l1_lambda > 0:
-                        # add sparsity regularization term
-                        loss = loss + self._l1_penalty(model)
+                        # add sparsity regularization term, scaled by lambda
+                        loss = loss + self.l1_lambda * self._l1_penalty(model)
                     total_loss += loss
 
             # after accumulating loss over all cells and batches, backpropagate

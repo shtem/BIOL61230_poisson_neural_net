@@ -16,6 +16,7 @@ def fit_poisson_glm(
     train_frac=0.7,
     val_frac=0.15,
     k_folds=3,
+    verbose=False,
 ):
     """Baseline per-cell Poisson generalized linear model.
 
@@ -24,10 +25,6 @@ def fit_poisson_glm(
     * ``grid_search=False``: fit a single GLM per cell using supplied ``alpha``.
     * ``grid_search=True``: perform per-cell k-fold CV over a set of ``alpha``
       values and refit the best model.
-
-    The feature matrix ``X`` is expected to have shape
-    ``(n_features, n_time_bins)`` while ``Y`` is ``(n_time_bins,)``.  ``cell_ids``
-    assigns each bin to a particular cell.
 
     Parameters
     ----------
@@ -47,6 +44,8 @@ def fit_poisson_glm(
         Train/validation split proportions.
     k_folds : int
         Number of folds for cross-validation during grid search.
+    verbose : bool, optional
+        If True, print progress information during splitting and grid search.
 
     Returns
     -------
@@ -64,6 +63,10 @@ def fit_poisson_glm(
         val_frac=val_frac,
         use_val=grid_search,  # only use val if grid search is on
     )
+    if verbose:
+        print(
+            f"GLM dataset splits: train {train_frac}, val {val_frac}, use_val {grid_search}"
+        )
     # flatten structure for search utilities
     Xtr_flat, Ytr_flat, cell_ids_tr_flat = flatten_cellwise_data(Xtr, Ytr)
 
@@ -100,6 +103,8 @@ def fit_poisson_glm(
     model_param_grid = {"alpha": alpha_grid}
 
     # perform grid search separately for each cell
+    if verbose:
+        print("Starting GLM per-cell grid search", model_param_grid)
     gs = grid_search_per_cell(
         Xtr_flat,
         Ytr_flat,
@@ -108,6 +113,7 @@ def fit_poisson_glm(
         model_param_grid=model_param_grid,
         trainer_param_grid=None,  # GLM has no trainer params
         k_folds=k_folds,
+        verbose=verbose,
     )
 
     best_params = gs["best_params"]
@@ -147,6 +153,7 @@ def fit_poisson_xgboost(
     train_frac=0.7,
     val_frac=0.15,
     k_folds=3,
+    verbose=False,
     **kwargs,
 ):
     """Baseline per-cell XGBoost with Poisson objective.
@@ -163,6 +170,8 @@ def fit_poisson_xgboost(
         Hyperparameter grid for ``XGBRegressor``.
     grid_search : bool
         If True, runs tuning; otherwise uses default/global params.
+    verbose : bool, optional
+        If True, print progress of splits/grid search.
     kwargs :
         Extra parameters forwarded to ``XGBRegressor`` constructor when not
         tuning.
@@ -182,6 +191,10 @@ def fit_poisson_xgboost(
         val_frac=val_frac,
         use_val=grid_search,
     )
+    if verbose:
+        print(
+            f"XGBoost dataset splits: train {train_frac}, val {val_frac}, use_val {grid_search}"
+        )
     Xtr_flat, Ytr_flat, cell_ids_tr_flat = flatten_cellwise_data(Xtr, Ytr)
 
     # -------------------------
@@ -230,6 +243,8 @@ def fit_poisson_xgboost(
     model_param_grid = param_grid
 
     # tune parameters for each cell independently
+    if verbose:
+        print("Starting XGBoost per-cell grid search", model_param_grid)
     gs = grid_search_per_cell(
         Xtr_flat,
         Ytr_flat,
@@ -238,6 +253,7 @@ def fit_poisson_xgboost(
         model_param_grid=model_param_grid,
         trainer_param_grid=None,  # XGB has no trainer params
         k_folds=k_folds,
+        verbose=verbose,
     )
 
     best_params = gs["best_params"]
