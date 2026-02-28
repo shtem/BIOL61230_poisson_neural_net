@@ -1,4 +1,5 @@
 import torch
+import torch.nn as nn
 import numpy as np
 from src.train.poisson_nn.nn_models import PoissonNN, SharedHiddenPoissonNN
 from src.train.poisson_nn.nn_training import PoissonTrainer, TransferLearningTrainer
@@ -122,7 +123,9 @@ def fit_poisson_nn(
     scaler : callable or None
         Optional feature scaler applied independently per cell.
     verbose : bool, optional
-        If True, print dataset splits and hyperparameter search progress.
+        If True, print dataset splits and hyperparameter search progress.  For
+        PyTorch models a summary of the network architecture will also be
+        printed (requires the ``torchsummary`` package).
 
     Returns
     -------
@@ -135,6 +138,7 @@ def fit_poisson_nn(
     # 1. Prepare datasets (validation only if grid_search=True)
     # ------------------------------------------------------------
     use_val = True
+    n_features = X.shape[0]
     if verbose:
         print(
             f"Preparing datasets with train_frac={train_frac}, val_frac={val_frac}, use_val={use_val}"
@@ -167,9 +171,21 @@ def fit_poisson_nn(
             "patience": patience,
         }
 
+        # when verbose, print a torchsummary of the architecture once
+        if verbose:
+            try:
+                from torchsummary import summary
+
+                tmp = PoissonNN(n_features=n_features, **model_params)
+                print("\n=== Network architecture summary ===")
+                summary(tmp, (n_features,))
+                print("=== end architecture summary ===\n")
+            except ImportError:
+                print("torchsummary not installed; skipping architecture summary")
+
         # factory to create new model instances per cell
         def model_class(**kw):
-            return PoissonNN(n_features=X.shape[0], **model_params)
+            return PoissonNN(n_features=n_features, **model_params)
 
         # training wrapper that ignores grid search args
         def train_fn(model, Xtr_c, ytr_c, Xv_c, yv_c, **tp):
@@ -189,6 +205,19 @@ def fit_poisson_nn(
             scaler=scaler,
             custom_train_fn=train_fn,
         )
+
+        # MODE A returns immediately after fitting, so we can still summarise
+        if verbose and results:
+            first = sorted(results.keys())[0]
+            model = results[first]["model"]
+            try:
+                from torchsummary import summary
+
+                print("\n=== Final network architecture summary (first cell) ===")
+                summary(model, (n_features,))
+                print("=== end architecture summary ===\n")
+            except ImportError:
+                pass
 
         return {
             "results": results,
@@ -218,6 +247,10 @@ def fit_poisson_nn(
 
     # wrapper used during cross-validation to instantiate trainers with
     # varying hyperparameters
+
+    # if verbose we will print a summary for the best model at the end;
+    # the results object is filled later so we'll handle that after the search
+
     def gs_train_fn(model, Xtr_c, ytr_c, Xv_c, yv_c, **tp):
         trainer = PoissonTrainer(**tp)
         return run_trainer(trainer, model, Xtr_c, ytr_c, Xv_c, yv_c)
@@ -231,7 +264,7 @@ def fit_poisson_nn(
         Xtr_flat,
         Ytr_flat,
         cell_ids_tr_flat,
-        model_class=lambda **kw: PoissonNN(n_features=X.shape[0], **kw),
+        model_class=lambda **kw: PoissonNN(n_features=n_features, **kw),
         model_param_grid=model_param_grid,
         trainer_param_grid=trainer_param_grid,
         k_folds=k_folds,
@@ -266,11 +299,24 @@ def fit_poisson_nn(
             Yv,
             Xte,
             Yte,
-            model_class=lambda **kw: PoissonNN(n_features=X.shape[0], **mp),
+            model_class=lambda **kw: PoissonNN(n_features=n_features, **mp),
             model_kwargs={},
             scaler=scaler,
             custom_train_fn=final_train_fn,
         )[cell]
+
+    # after building final_results, optionally print summary for first cell
+    if verbose and final_results:
+        first = sorted(final_results.keys())[0]
+        model = final_results[first]["model"]
+        try:
+            from torchsummary import summary
+
+            print("\n=== Final TL network architecture summary (first cell) ===")
+            summary(model, (n_features,))
+            print("=== end architecture summary ===\n")
+        except ImportError:
+            pass
 
     return {
         "results": final_results,
@@ -322,7 +368,9 @@ def fit_poisson_nn_transfer_learning(
     scaler : callable or None
         Optional per-cell feature scaler.
     verbose : bool, optional
-        If True, print dataset information and grid-search progress.
+        If True, print dataset information and grid-search progress.  A
+        network architecture summary (via ``torchsummary``) is shown when the
+        model is instantiated.
 
     Returns
     -------
@@ -338,6 +386,29 @@ def fit_poisson_nn_transfer_learning(
 
     if verbose:
         print(f"TL fit called with {len(unique_cells)} cells, {n_features} features")
+    # when verbose, show a model summary before training begins
+    if verbose:
+        try:
+            from torchsummary import summary
+
+            tmp = SharedHiddenPoissonNN(n_features, hidden_sizes, n_cells)
+            print("\n=== TL network architecture summary ===")
+
+            # `SharedHiddenPoissonNN.forward` requires a cell_idx argument; wrap
+            # it so torchsummary can call it with a single input tensor.
+            class _Wrapper(nn.Module):
+                def __init__(self, m):
+                    super().__init__()
+                    self.m = m
+
+                def forward(self, x):
+                    return self.m(x, 0)
+
+            wrapped = _Wrapper(tmp)
+            summary(wrapped, (n_features,))
+            print("=== end architecture summary ===\n")
+        except ImportError:
+            print("torchsummary not installed; skipping architecture summary")
 
     # ------------------------------------------------------------
     # Proper train/test split for TL (no val)

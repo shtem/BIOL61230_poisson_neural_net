@@ -36,7 +36,10 @@ def run_experiment(
     4. save the fitted object and figures to disk
 
     Models are stored under ``data/models`` by default and plots are written to
-    ``data/results/{model_name}`` unless alternate directories are specified.
+    ``data/results/{model_name}`` unless alternate directories are specified.  When
+    a fitted model is a PyTorch ``nn.Module`` an additional architecture diagram
+    will be produced (using :func:`src.visualisation.plot_nn_architecture`) and
+    saved alongside the other figures.
 
     Parameters
     ----------
@@ -99,6 +102,25 @@ def run_experiment(
         )
     else:
         fig1 = fig2 = None
+
+    # if this is a PyTorch model, also generate an architecture diagram
+    if plot:
+        try:
+            import torch
+            from src.visualisation import plot_nn_architecture
+
+            if isinstance(res["results"][first]["model"], torch.nn.Module):
+                br = Path(base_results_dir or "data/results")
+                try:
+                    plot_nn_architecture(
+                        res["results"][first]["model"], model_name, base_dir=br
+                    )
+                except Exception as exc:
+                    # render failure (likely graphviz missing); warn but continue
+                    print("Warning: architecture plot failed:", exc)
+        except ImportError:
+            # either torch or visualization helper missing; ignore
+            pass
 
     if save_models:
         bm = Path(base_models_dir or "data/models")
