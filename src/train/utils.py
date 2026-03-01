@@ -112,9 +112,11 @@ def run_experiment(
             if isinstance(res["results"][first]["model"], torch.nn.Module):
                 br = Path(base_results_dir or "data/results")
                 try:
-                    plot_nn_architecture(
+                    arch_path = plot_nn_architecture(
                         res["results"][first]["model"], model_name, base_dir=br
                     )
+                    if arch_path is not None:
+                        print(f"Architecture diagram saved to {arch_path}")
                 except Exception as exc:
                     # render failure (likely graphviz missing); warn but continue
                     print("Warning: architecture plot failed:", exc)

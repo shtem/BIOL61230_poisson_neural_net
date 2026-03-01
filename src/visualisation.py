@@ -399,7 +399,12 @@ def plot_nn_architecture(model, model_name: str, base_dir="data/results"):
             raise ValueError("could not determine input dimension for the model")
         inp = torch.zeros(1, inp_dim)
 
-    out = model(inp)
+    # some models (e.g. SharedHiddenPoissonNN) require a cell_idx arg
+    try:
+        out = model(inp)
+    except TypeError:
+        # attempt with a dummy index
+        out = model(inp, 0)
     dot = make_dot(out, params=dict(model.named_parameters()))
 
     base_dir = Path(base_dir)
@@ -408,8 +413,15 @@ def plot_nn_architecture(model, model_name: str, base_dir="data/results"):
     out_path = out_dir / "architecture"
     dot.format = "png"
     try:
-        dot.render(str(out_path), cleanup=True)
-        return out_path.with_suffix(".png")
+        rendered = dot.render(str(out_path), cleanup=True)
+        # dot.render returns path to generated file; may include extension
+        png_path = Path(rendered if rendered else str(out_path) + ".png")
+        if png_path.exists():
+            return png_path
+        else:
+            # sometimes render writes without extension
+            alt = out_path.with_suffix(".png")
+            return alt if alt.exists() else png_path
     except Exception as exc:  # graphviz executable missing or render failed
         print(
             "Warning: could not render architecture graph (is Graphviz installed and on PATH?):",
