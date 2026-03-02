@@ -291,23 +291,16 @@ def grid_search_transfer_learning(
     trainer_param_grid,
     scaler=None,
     verbose=False,
+    agg_method="median",
 ):
     """Grid search hyperparameters for a transfer‑learning architecture.
 
-    This function differs from ``grid_search_per_cell`` in that it handles a
-    shared-hidden transfer-learning model trained jointly across all cells.
-    Instead of a single train/test split, the search now performs a proper
-    train/validation partition (70/15 by default) for each cell.  The
-    validation fold is used for scoring during hyperparameter evaluation, which
-    better approximates how the final model will generalize and prevents
-    ``trainer`` settings from being selected based on the test set.
-
-    After training with each candidate parameter pair, we compute
-    pseudo‑R² separately for every cell on the validation data and aggregate
-    the per-cell scores (currently using the median) to choose the
-    best combination.  This reduces the influence of outlier cells compared to
-    the previous mean‑based strategy and should produce models that are more
-    uniformly good across the population.
+    This routine evaluates each candidate combination on a per‑cell
+    validation fold and then aggregates the per‑cell pseudo‑R² scores to
+    determine which set of hyperparameters is best.  By default the
+    **median** pseudo‑R² across cells is used, which reduces the influence of
+    a few poorly‑predicted cells.  If you prefer to maximise the overall
+    average performance you may pass ``agg_method="mean"``.
 
     Parameters
     ----------
@@ -325,6 +318,10 @@ def grid_search_transfer_learning(
     verbose : bool, optional
         If True, print progress messages while evaluating parameter
         combinations and aggregate scores.
+    agg_method : {"median", "mean"}, optional
+        How to aggregate per-cell validation scores when selecting the best
+        hyperparameters.  ``"median"`` is more robust to outliers, while
+        ``"mean"`` maximises overall average performance.
 
     Returns
     -------
@@ -415,12 +412,23 @@ def grid_search_transfer_learning(
     # Multiple aggregation strategies could be used; median is less sensitive
     # to a few poorly-predicted cells than a simple mean.
     # ------------------------------------------------------------
+    # ensure the aggregation method is recognised
+    if agg_method not in ("median", "mean"):
+        raise ValueError(f"Unknown agg_method '{agg_method}'; must be 'median' or 'mean'")
+
     best_combo = None
     best_agg_score = -np.inf
 
     for frozen, cell_scores in all_scores.items():
         scores = np.array(list(cell_scores.values()))
-        agg = np.median(scores)  # could also use np.mean, weighted mean, etc.
+        if agg_method == "median":
+            agg = np.median(scores)
+        else:  # mean
+            agg = np.mean(scores)
+
+        if verbose:
+            print(f" -> combo {frozen} {agg_method} aggregate =", agg)
+
         if agg > best_agg_score:
             best_agg_score = agg
             best_combo = frozen

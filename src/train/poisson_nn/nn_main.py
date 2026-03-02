@@ -344,6 +344,7 @@ def fit_poisson_nn_transfer_learning(
     patience=10,
     scaler=None,
     verbose=False,
+    agg_method="median",
 ):
     """Train a shared‑hidden PoissonNN across multiple cells (transfer learning).
 
@@ -371,6 +372,10 @@ def fit_poisson_nn_transfer_learning(
         If True, print dataset information and grid-search progress.  A
         network architecture summary (via ``torchsummary``) is shown when the
         model is instantiated.
+    agg_method : {"median", "mean"}, optional
+        Aggregation method used during grid search to combine per-cell
+        validation scores.  Defaults to ``"median"``; use ``"mean"`` to
+        maximise average performance across cells.
 
     Returns
     -------
@@ -518,6 +523,7 @@ def fit_poisson_nn_transfer_learning(
         trainer_param_grid=trainer_param_grid,
         scaler=scaler,
         verbose=verbose,
+        agg_method=agg_method,
     )
 
     best_mp = gs["best_params"]["model_params"]
