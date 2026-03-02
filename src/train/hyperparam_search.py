@@ -414,7 +414,9 @@ def grid_search_transfer_learning(
     # ------------------------------------------------------------
     # ensure the aggregation method is recognised
     if agg_method not in ("median", "mean"):
-        raise ValueError(f"Unknown agg_method '{agg_method}'; must be 'median' or 'mean'")
+        raise ValueError(
+            f"Unknown agg_method '{agg_method}'; must be 'median' or 'mean'"
+        )
 
     best_combo = None
     best_agg_score = -np.inf

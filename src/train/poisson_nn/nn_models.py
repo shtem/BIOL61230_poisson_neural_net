@@ -109,3 +109,76 @@ class SharedHiddenPoissonNN(BasePoissonModel):
         # pass input through shared layers then select correct head
         h = self.feature_extractor(X)
         return self.heads[cell_idx](h).squeeze(-1)
+
+
+class SharedNonlinearHeadsPoissonNN(BasePoissonModel):
+    """Multi-cell network with a shallow shared feature extractor and nonlinear per-cell heads.
+
+    This architecture shares only low-level representations across cells, while each cell
+    receives its own multi-layer nonlinear head. It is useful when cells respond to similar
+    basic features but require distinct nonlinear transformations to capture their tuning.
+    """
+
+    def __init__(self, n_features, shared_sizes, head_sizes, n_cells):
+        super().__init__()
+        self.n_cells = n_cells
+
+        # Shared low-level feature extractor
+        shared_layers = []
+        in_dim = n_features
+        for h in shared_sizes:
+            shared_layers.append(nn.Linear(in_dim, h))
+            shared_layers.append(nn.ReLU())
+            in_dim = h
+        self.shared = nn.Sequential(*shared_layers)
+
+        # Per-cell nonlinear heads
+        self.heads = nn.ModuleList()
+        for _ in range(n_cells):
+            layers = []
+            head_in = shared_sizes[-1]
+            for h in head_sizes:
+                layers.append(nn.Linear(head_in, h))
+                layers.append(nn.ReLU())
+                head_in = h
+            layers.append(nn.Linear(head_in, 1))
+            layers.append(nn.Softplus())
+            self.heads.append(nn.Sequential(*layers))
+
+    def forward(self, X, cell_idx):
+        h = self.shared(X)
+        return self.heads[cell_idx](h).squeeze(-1)
+
+
+class SharedFirstLayerPoissonNN(BasePoissonModel):
+    """Multi-cell network that shares only the first layer, with deeper layers unique to each cell.
+
+    This architecture provides minimal sharing: a common first transformation captures basic
+    structure across cells, while the remaining layers are cell-specific. It is suited to
+    populations where cells exhibit limited shared structure and benefit from flexible,
+    independent heads.
+    """
+
+    def __init__(self, n_features, shared_dim, head_sizes, n_cells):
+        super().__init__()
+        self.n_cells = n_cells
+
+        # Only the first layer is shared
+        self.shared = nn.Sequential(nn.Linear(n_features, shared_dim), nn.ReLU())
+
+        # Per-cell MLPs
+        self.heads = nn.ModuleList()
+        for _ in range(n_cells):
+            layers = []
+            in_dim = shared_dim
+            for h in head_sizes:
+                layers.append(nn.Linear(in_dim, h))
+                layers.append(nn.ReLU())
+                in_dim = h
+            layers.append(nn.Linear(in_dim, 1))
+            layers.append(nn.Softplus())
+            self.heads.append(nn.Sequential(*layers))
+
+    def forward(self, X, cell_idx):
+        h = self.shared(X)
+        return self.heads[cell_idx](h).squeeze(-1)

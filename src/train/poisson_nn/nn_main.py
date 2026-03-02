@@ -1,7 +1,12 @@
 import torch
 import torch.nn as nn
 import numpy as np
-from src.train.poisson_nn.nn_models import PoissonNN, SharedHiddenPoissonNN
+from src.train.poisson_nn.nn_models import (
+    PoissonNN,
+    SharedHiddenPoissonNN,
+    SharedFirstLayerPoissonNN,
+    SharedNonlinearHeadsPoissonNN,
+)
 from src.train.poisson_nn.nn_training import PoissonTrainer, TransferLearningTrainer
 from src.train.training import fit_model_per_cell
 from src.train.evaluate import evaluate_poisson_model
@@ -69,6 +74,82 @@ def run_trainer(trainer, model, Xtr, ytr=None, Xv=None, yv=None):
             model.val_losses = None
 
         return model
+
+
+# ------------------------------------------------------------
+# Model factory: creates the correct TL architecture
+# ------------------------------------------------------------
+def make_model(model_type, n_features, n_cells, **mp):
+    """
+    Construct a transfer‑learning Poisson neural network architecture.
+
+    This factory function centralises model creation for all supported
+    transfer‑learning architectures. It ensures that the rest of the training
+    and grid‑search pipeline can remain unchanged while allowing flexible
+    selection between different shared‑representation designs.
+
+    Parameters
+    ----------
+    model_type : {"shared_hidden", "shared_nonlinear_heads", "shared_first_layer"}
+        Specifies which architecture to instantiate:
+
+        - "shared_hidden":
+            Deep shared feature extractor with simple linear per‑cell heads.
+            Expects `mp["hidden_sizes"]` (list of ints).
+
+        - "shared_nonlinear_heads":
+            Shallow shared trunk with nonlinear per‑cell MLP heads.
+            Expects:
+                `mp["shared_sizes"]` (list of ints)
+                `mp["head_sizes"]`   (list of ints)
+
+        - "shared_first_layer":
+            Only the first layer is shared; all deeper layers are per‑cell.
+            Expects:
+                `mp["shared_dim"]`  (int)
+                `mp["head_sizes"]`  (list of ints)
+
+    n_features : int
+        Number of input features for each sample.
+
+    n_cells : int
+        Number of cells, used to create the appropriate number of output heads.
+
+    **mp : dict
+        Model‑specific hyperparameters required by the chosen architecture.
+        Missing or incompatible keys will raise a KeyError or ValueError.
+
+    Returns
+    -------
+    nn.Module
+        A fully constructed Poisson neural network model matching the requested
+        architecture and ready for training with the transfer‑learning trainer.
+    """
+    if model_type == "shared_hidden":
+        return SharedHiddenPoissonNN(
+            n_features=n_features,
+            hidden_sizes=mp["hidden_sizes"],
+            n_cells=n_cells,
+        )
+
+    elif model_type == "shared_nonlinear_heads":
+        return SharedNonlinearHeadsPoissonNN(
+            n_features=n_features,
+            shared_sizes=mp["shared_sizes"],
+            head_sizes=mp["head_sizes"],
+            n_cells=n_cells,
+        )
+
+    elif model_type == "shared_first_layer":
+        return SharedFirstLayerPoissonNN(
+            n_features=n_features,
+            shared_dim=mp["shared_dim"],
+            head_sizes=mp["head_sizes"],
+            n_cells=n_cells,
+        )
+
+    else:
+        raise ValueError(f"Unknown model_type: {model_type}")
 
 
 # ------------------------------------------------------------
@@ -335,6 +416,7 @@ def fit_poisson_nn_transfer_learning(
     grid_search=False,
     model_param_grid=None,
     trainer_param_grid=None,
+    model_params=None,
     hidden_sizes=[16],
     lr=1e-3,
     epochs=100,
@@ -345,62 +427,84 @@ def fit_poisson_nn_transfer_learning(
     scaler=None,
     verbose=False,
     agg_method="median",
+    model_type="shared_hidden",
 ):
-    """Train a shared‑hidden PoissonNN across multiple cells (transfer learning).
+    """
+    Train a multi-cell Poisson neural network using transfer learning.
 
-    Each cell has its own output head but the hidden layers are shared.  This
-    function supports an optional hyperparameter grid search over the same
-    parameters as ``fit_poisson_nn``.  Because the transfer model is trained
-    jointly, we only split into train/test (no validation) to avoid leakage.
+    This function supports three architectures:
+    - "shared_hidden": deep shared trunk + linear per-cell heads
+    - "shared_nonlinear_heads": shallow shared trunk + nonlinear per-cell heads
+    - "shared_first_layer": only the first layer shared, deeper layers per-cell
+
+    Two training modes are supported:
+    - No grid search: model hyperparameters are passed via `model_params`
+    - Grid search: model hyperparameters are passed via `model_param_grid`
+
+    The function performs:
+    - 85/15 train/test split (no validation for final training)
+    - optional per-cell feature scaling
+    - per-cell evaluation on the held-out test set
+    - optional grid search using a separate 70/15/15 split
 
     Parameters
     ----------
     X, Y, cell_ids : array-like
-        Input data as in ``fit_poisson_nn``.
+        Full dataset in cell-wise format.
     grid_search : bool
-        Whether to perform grid search using ``grid_search_transfer_learning``.
-    model_param_grid, trainer_param_grid : dict, optional
-        If ``grid_search`` is True, these define the search space.
+        Whether to run transfer-learning grid search.
+    model_param_grid : dict or None
+        Hyperparameter grid for model (used only when grid_search=True).
+    trainer_param_grid : dict or None
+        Hyperparameter grid for trainer (used only when grid_search=True).
+    model_params : dict or None
+        Direct model parameters for no-grid-search mode.
     hidden_sizes : list
-        Default hidden layer sizes when not tuning.
-    Other arguments :
-        Trainer hyperparameters (lr, epochs, etc.) passed to
-        ``TransferLearningTrainer``.
+        Default shared hidden sizes for "shared_hidden".
+    lr, epochs, weight_decay, l1_lambda, batch_size, patience : trainer settings
     scaler : callable or None
         Optional per-cell feature scaler.
-    verbose : bool, optional
-        If True, print dataset information and grid-search progress.  A
-        network architecture summary (via ``torchsummary``) is shown when the
-        model is instantiated.
-    agg_method : {"median", "mean"}, optional
-        Aggregation method used during grid search to combine per-cell
-        validation scores.  Defaults to ``"median"``; use ``"mean"`` to
-        maximise average performance across cells.
+    verbose : bool
+        Print architecture summary and progress.
+    agg_method : {"median", "mean"}
+        Aggregation method for TL grid search.
+    model_type : {"shared_hidden", "shared_nonlinear_heads", "shared_first_layer"}
+        Selects which TL architecture to use.
 
     Returns
     -------
     dict
-        Includes ``results`` keyed by cell, ``best_params`` and optionally
-        ``all_scores`` from grid search.  When ``grid_search`` is True the
-        search is restricted to the 85% training split to prevent information
-        from the final test set leaking into hyperparameter selection.
+        {
+            "results": per-cell evaluation,
+            "best_params": best model/trainer params,
+            "all_scores": grid search scores or None
+        }
     """
+
     unique_cells = np.unique(cell_ids)
     n_cells = len(unique_cells)
     n_features = X.shape[0]
 
+    # ------------------------------------------------------------
+    # Optional architecture summary
+    # ------------------------------------------------------------
     if verbose:
-        print(f"TL fit called with {len(unique_cells)} cells, {n_features} features")
-    # when verbose, show a model summary before training begins
-    if verbose:
+        print(f"TL fit called with {n_cells} cells, {n_features} features")
+
         try:
             from torchsummary import summary
 
-            tmp = SharedHiddenPoissonNN(n_features, hidden_sizes, n_cells)
-            print("\n=== TL network architecture summary ===")
+            # Build a temporary model for summary
+            tmp = make_model(
+                model_type,
+                n_features,
+                n_cells,
+                hidden_sizes=hidden_sizes,
+                shared_sizes=hidden_sizes,
+                head_sizes=[32, 16],
+                shared_dim=hidden_sizes[0],
+            )
 
-            # `SharedHiddenPoissonNN.forward` requires a cell_idx argument; wrap
-            # it so torchsummary can call it with a single input tensor.
             class _Wrapper(nn.Module):
                 def __init__(self, m):
                     super().__init__()
@@ -409,18 +513,16 @@ def fit_poisson_nn_transfer_learning(
                 def forward(self, x):
                     return self.m(x, 0)
 
-            wrapped = _Wrapper(tmp)
-            summary(wrapped, (n_features,))
+            print("\n=== TL network architecture summary ===")
+            summary(_Wrapper(tmp), (n_features,))
             print("=== end architecture summary ===\n")
+
         except ImportError:
             print("torchsummary not installed; skipping architecture summary")
 
     # ------------------------------------------------------------
-    # Proper train/test split for TL (no val)
+    # Train/test split (no validation here)
     # ------------------------------------------------------------
-    # We reserve 15% of the data as a final test set that is **never**
-    # touched during hyperparameter tuning.  Grid search will only see the
-    # remaining 85% (see below) to prevent any leakage of test-set samples.
     Xtr, Ytr, _, _, Xte, Yte = prepare_cellwise_datasets(
         X,
         Y,
@@ -430,17 +532,16 @@ def fit_poisson_nn_transfer_learning(
         use_val=False,
     )
 
-    # Optional scaling per cell (fit on train, transform train+test)
+    # Optional per-cell scaling
     if scaler is not None:
         for cell in unique_cells:
             sc = scaler()
             Xtr[cell] = sc.fit_transform(Xtr[cell])
             Xte[cell] = sc.transform(Xte[cell])
 
-    # Convert dict → list in cell order for trainers which expect lists
+    # Convert dict → list for trainer
     X_cells_train = [Xtr[cell] for cell in unique_cells]
     Y_cells_train = [Ytr[cell] for cell in unique_cells]
-
     X_cells_test = [Xte[cell] for cell in unique_cells]
     Y_cells_test = [Yte[cell] for cell in unique_cells]
 
@@ -449,8 +550,15 @@ def fit_poisson_nn_transfer_learning(
     # ------------------------------------------------------------
     if not grid_search:
 
-        # fixed hyperparameters across the board
-        model_params = {"hidden_sizes": hidden_sizes}
+        # If no model_params provided, fall back to defaults
+        if model_params is None:
+            model_params = {
+                "hidden_sizes": hidden_sizes,
+                "shared_sizes": hidden_sizes,
+                "head_sizes": [32, 16],
+                "shared_dim": hidden_sizes[0],
+            }
+
         trainer_params = {
             "lr": lr,
             "epochs": epochs,
@@ -460,12 +568,11 @@ def fit_poisson_nn_transfer_learning(
             "patience": patience,
         }
 
-        # instantiate shared-hidden model and train it on all cells simultaneously
-        model = SharedHiddenPoissonNN(n_features, hidden_sizes, n_cells)
+        model = make_model(model_type, n_features, n_cells, **model_params)
         trainer = TransferLearningTrainer(**trainer_params)
         model = run_trainer(trainer, model, X_cells_train, Y_cells_train)
 
-        # Evaluate on held-out test set cell-by-cell
+        # Evaluate on test set
         results = {}
         for ci, cell in enumerate(unique_cells):
             Xc_test = torch.tensor(X_cells_test[ci], dtype=torch.float32)
@@ -499,25 +606,14 @@ def fit_poisson_nn_transfer_learning(
     # ------------------------------------------------------------
     # MODE B — GRID SEARCH
     # ------------------------------------------------------------
-    # Grid search should operate only on the *training* portion defined above.
-    # To achieve this we flatten the per‑cell dictionaries returned by the
-    # initial split and pass them to the search routine. The grid search itself
-    # will perform its own inner train/validation split on this subset.
     Xtr_flat, Ytr_flat, cell_ids_tr_flat = flatten_cellwise_data(Xtr, Ytr)
 
-    # perform a joint grid search over model and trainer parameters using
-    # training-only data to avoid leakage from the held‑out test set
-    if verbose:
-        print("Starting TL grid search on flattened training set")
-        print("model_param_grid=", model_param_grid)
-        print("trainer_param_grid=", trainer_param_grid)
-        print(f"training set size: {Xtr_flat.shape}, labels: {cell_ids_tr_flat.shape}")
     gs = grid_search_transfer_learning(
         Xtr_flat,
         Ytr_flat,
         cell_ids_tr_flat,
-        model_class=lambda n_features, n_cells, **kw: SharedHiddenPoissonNN(
-            n_features, kw["hidden_sizes"], n_cells
+        model_class=lambda n_features, n_cells, **kw: make_model(
+            model_type, n_features, n_cells, **kw
         ),
         model_param_grid=model_param_grid,
         trainer_param_grid=trainer_param_grid,
@@ -528,19 +624,12 @@ def fit_poisson_nn_transfer_learning(
 
     best_mp = gs["best_params"]["model_params"]
     best_tp = gs["best_params"]["trainer_params"]
-    if verbose:
-        print("Grid-search returned best_params:", gs["best_params"])
-        # optionally inspect all_scores dictionary
-        from pprint import pprint
 
-        pprint(gs.get("all_scores", {}))
-
-    # Fit final TL model on train split using found hyperparameters
-    model = SharedHiddenPoissonNN(n_features, best_mp["hidden_sizes"], n_cells)
+    model = make_model(model_type, n_features, n_cells, **best_mp)
     trainer = TransferLearningTrainer(**best_tp)
     model = run_trainer(trainer, model, X_cells_train, Y_cells_train)
 
-    # Evaluate per cell on test split; behavior same as mode A
+    # Evaluate on test set
     results = {}
     for ci, cell in enumerate(unique_cells):
         Xc_test = torch.tensor(X_cells_test[ci], dtype=torch.float32)
