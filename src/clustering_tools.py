@@ -3,6 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
+from sklearn.impute import SimpleImputer
 from sklearn.linear_model import PoissonRegressor
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import silhouette_score
@@ -561,6 +562,9 @@ def run_clustering(
 
     # 2. Extract features
     features = feature_extractor(X, Y, cell_ids)
+    if np.isnan(features).any():
+        imp = SimpleImputer(strategy="mean")
+        features = imp.fit_transform(features)
 
     # 3. Normalise features
     if zscore_within_subject:

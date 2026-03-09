@@ -1,9 +1,10 @@
+import os
 import mat73
 import numpy as np
 from scipy import io
 
 
-def load_data(filepath, filenames):
+def load_data(path, filenames=None):
     """Load and concatenate multiple MATLAB data files.
 
     Each file is expected to contain arrays ``X``, ``y``, ``cell_ids`` and
@@ -12,7 +13,7 @@ def load_data(filepath, filenames):
 
     Parameters
     ----------
-    filepath : str
+    path : str
         Directory path containing the .mat files.
     filenames : list of str
         Names of files (not full paths) to load.
@@ -24,6 +25,26 @@ def load_data(filepath, filenames):
         ``(n_features, total_time)`` and the others are 1-d arrays of length
         ``total_time``.
     """
+    # -----------------------------
+    # Case 1: Real data (single file)
+    # -----------------------------
+    if filenames is None:
+        data = io.loadmat(path)  # real data uses scipy.io.loadmat
+
+        X = data["X"]  # shape (n_bins, n_features)
+        Y = data["y"].squeeze()
+        cell_ids = data["cell_ids"].squeeze()
+        rec_ids = data["rec_ids"].squeeze()
+
+        # Transpose X to (n_features, n_bins)
+        if X.shape[0] > X.shape[1]:  # real data is (bins, features)
+            X = X.T
+
+        return X, Y, cell_ids, rec_ids
+
+    # -----------------------------------
+    # Case 2: Simulated data (multiple files)
+    # -----------------------------------
     X_list = []
     Y_list = []
     cell_ids_list = []
@@ -33,33 +54,35 @@ def load_data(filepath, filenames):
     rec_offset = 0
 
     for fname in filenames:
-        # load using mat73 to support MATLAB v7.3 files
-        data = mat73.loadmat(filepath + "/" + fname)
+        full_path = os.path.join(path, fname)
 
-        X = data["X"]
-        Y = data["y"]
-        cell_ids = data["cell_ids"]
-        rec_ids = data["rec_id"]
+        # Simulated data uses mat73 (HDF5-based MATLAB v7.3)
+        data = mat73.loadmat(full_path)
 
-        # Offset IDs so they remain unique across subjects
+        X = data["X"]  # shape (n_features, n_bins)
+        Y = data["y"].squeeze()
+        cell_ids = data["cell_ids"].squeeze()
+        rec_ids = data["rec_id"].squeeze()
+
+        # Offset IDs to avoid collisions across files
         cell_ids = cell_ids + cell_offset
         rec_ids = rec_ids + rec_offset
 
-        # Append to lists for later concatenation
+        # Append
         X_list.append(X)
         Y_list.append(Y)
         cell_ids_list.append(cell_ids)
         rec_ids_list.append(rec_ids)
 
-        # Update offsets based on max ID seen so far
+        # Update offsets
         cell_offset = cell_ids.max() + 1
         rec_offset = rec_ids.max() + 1
 
-    # Concatenate across subjects
-    X_all = np.concatenate(X_list, axis=1)  # concatenate time dimension
-    Y_all = np.concatenate(Y_list, axis=0)
-    cell_ids_all = np.concatenate(cell_ids_list, axis=0)
-    rec_ids_all = np.concatenate(rec_ids_list, axis=0)
+    # Concatenate along time axis
+    X_all = np.concatenate(X_list, axis=1)
+    Y_all = np.concatenate(Y_list)
+    cell_ids_all = np.concatenate(cell_ids_list)
+    rec_ids_all = np.concatenate(rec_ids_list)
 
     return X_all, Y_all, cell_ids_all, rec_ids_all
 
