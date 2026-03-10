@@ -2,6 +2,7 @@ import os
 import mat73
 import numpy as np
 from scipy import io
+from sklearn.impute import SimpleImputer
 
 
 def load_data(path, filenames=None):
@@ -31,8 +32,8 @@ def load_data(path, filenames=None):
     if filenames is None:
         data = io.loadmat(path)  # real data uses scipy.io.loadmat
 
-        X = data["X"]  # shape (n_bins, n_features)
-        Y = data["y"].squeeze()
+        X = data["X"].astype(float)  # shape (n_bins, n_features)
+        Y = data["y"].squeeze().astype(float)
         cell_ids = data["cell_ids"].squeeze()
         rec_ids = data["rec_ids"].squeeze()
 
@@ -40,6 +41,9 @@ def load_data(path, filenames=None):
         if X.shape[0] > X.shape[1]:  # real data is (bins, features)
             X = X.T
 
+        # Impute nan values in X with column means (features are columns after transpose)
+        imp = SimpleImputer(strategy="mean")
+        X = imp.fit_transform(X.T).T
         return X, Y, cell_ids, rec_ids
 
     # -----------------------------------
@@ -59,8 +63,8 @@ def load_data(path, filenames=None):
         # Simulated data uses mat73 (HDF5-based MATLAB v7.3)
         data = mat73.loadmat(full_path)
 
-        X = data["X"]  # shape (n_features, n_bins)
-        Y = data["y"].squeeze()
+        X = data["X"].astype(float)  # shape (n_features, n_bins)
+        Y = data["y"].squeeze().astype(float)
         cell_ids = data["cell_ids"].squeeze()
         rec_ids = data["rec_id"].squeeze()
 
@@ -83,6 +87,9 @@ def load_data(path, filenames=None):
     Y_all = np.concatenate(Y_list)
     cell_ids_all = np.concatenate(cell_ids_list)
     rec_ids_all = np.concatenate(rec_ids_list)
+
+    imp = SimpleImputer(strategy="mean")
+    X_all = imp.fit_transform(X_all.T).T
 
     return X_all, Y_all, cell_ids_all, rec_ids_all
 
