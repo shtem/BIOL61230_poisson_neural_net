@@ -130,6 +130,7 @@ def make_model(model_type, n_features, n_cells, **mp):
             n_features=n_features,
             hidden_sizes=mp["hidden_sizes"],
             n_cells=n_cells,
+            shared_extractor=mp["shared_extractor"],
         )
 
     elif model_type == "shared_nonlinear_heads":
@@ -138,6 +139,7 @@ def make_model(model_type, n_features, n_cells, **mp):
             shared_sizes=mp["shared_sizes"],
             head_sizes=mp["head_sizes"],
             n_cells=n_cells,
+            shared_extractor=mp["shared_extractor"],
         )
 
     elif model_type == "shared_first_layer":
@@ -146,6 +148,7 @@ def make_model(model_type, n_features, n_cells, **mp):
             shared_dim=mp["shared_dim"],
             head_sizes=mp["head_sizes"],
             n_cells=n_cells,
+            shared_extractor=mp["shared_extractor"],
         )
 
     else:
@@ -242,7 +245,10 @@ def fit_poisson_nn(
     if not grid_search:
 
         # use provided grids or fall back to defaults
-        model_params = model_param_grid or {"hidden_sizes": hidden_sizes}
+        model_params = model_param_grid or {
+            "hidden_sizes": hidden_sizes,
+            "extractor": None,
+        }
         trainer_params = trainer_param_grid or {
             "lr": lr,
             "epochs": epochs,
@@ -314,7 +320,10 @@ def fit_poisson_nn(
     # ------------------------------------------------------------
     # if no grids provided, create trivial grids that include default values
     if model_param_grid is None:
-        model_param_grid = {"hidden_sizes": [hidden_sizes]}
+        model_param_grid = {
+            "hidden_sizes": [hidden_sizes],
+            "extractor": [None],
+        }
 
     if trainer_param_grid is None:
         trainer_param_grid = {
@@ -557,6 +566,7 @@ def fit_poisson_nn_transfer_learning(
                 "shared_sizes": hidden_sizes,
                 "head_sizes": [32, 16],
                 "shared_dim": hidden_sizes[0],
+                "shared_extractor": None,
             }
 
         trainer_params = {
@@ -607,6 +617,15 @@ def fit_poisson_nn_transfer_learning(
     # MODE B — GRID SEARCH
     # ------------------------------------------------------------
     Xtr_flat, Ytr_flat, cell_ids_tr_flat = flatten_cellwise_data(Xtr, Ytr)
+
+    if model_param_grid is None:
+        model_param_grid = {
+            "hidden_sizes": [hidden_sizes],
+            "shared_sizes": [hidden_sizes],
+            "head_sizes": [[32, 16]],
+            "shared_dim": [hidden_sizes[0]],
+            "shared_extractor": [None],  # NEW
+        }
 
     gs = grid_search_transfer_learning(
         Xtr_flat,
