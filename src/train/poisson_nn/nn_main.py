@@ -125,12 +125,13 @@ def make_model(model_type, n_features, n_cells, **mp):
         A fully constructed Poisson neural network model matching the requested
         architecture and ready for training with the transfer‑learning trainer.
     """
+    shared_extractor = mp.get("shared_extractor", None)
     if model_type == "shared_hidden":
         return SharedHiddenPoissonNN(
             n_features=n_features,
             hidden_sizes=mp["hidden_sizes"],
             n_cells=n_cells,
-            shared_extractor=mp["shared_extractor"],
+            shared_extractor=shared_extractor,
         )
 
     elif model_type == "shared_nonlinear_heads":
@@ -139,7 +140,7 @@ def make_model(model_type, n_features, n_cells, **mp):
             shared_sizes=mp["shared_sizes"],
             head_sizes=mp["head_sizes"],
             n_cells=n_cells,
-            shared_extractor=mp["shared_extractor"],
+            shared_extractor=shared_extractor,
         )
 
     elif model_type == "shared_first_layer":
@@ -148,7 +149,7 @@ def make_model(model_type, n_features, n_cells, **mp):
             shared_dim=mp["shared_dim"],
             head_sizes=mp["head_sizes"],
             n_cells=n_cells,
-            shared_extractor=mp["shared_extractor"],
+            shared_extractor=shared_extractor,
         )
 
     else:
@@ -512,6 +513,7 @@ def fit_poisson_nn_transfer_learning(
                 shared_sizes=hidden_sizes,
                 head_sizes=[32, 16],
                 shared_dim=hidden_sizes[0],
+                shared_extractor=(model_params or {}).get("shared_extractor", None),
             )
 
             class _Wrapper(nn.Module):

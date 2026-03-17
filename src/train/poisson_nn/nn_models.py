@@ -30,17 +30,30 @@ class BasePoissonModel(nn.Module, ABC):
         return super().to(device)
 
     def preprocess(self, X):
-        X_t = torch.tensor(X, dtype=torch.float32, device=self.device)
+        # Detect FakeTensor / ProxyTensor ONLY (torchview tracing)
+        is_fake = isinstance(X, torch.Tensor) and type(X).__name__ in (
+            "FakeTensor",
+            "ProxyTensor",
+        )
 
+        if is_fake:
+            # Torchview tracing path — skip device/dtype logic
+            X_t = X
+        else:
+            # Normal path: convert numpy → tensor, move to device
+            if torch.is_tensor(X):
+                X_t = X.detach().clone().to(device=self.device, dtype=torch.float32)
+            else:
+                X_t = torch.tensor(X, dtype=torch.float32, device=self.device)
+
+        # Shape logic
         if self.input_type == "flat":
             return X_t
 
         if self.input_type == "sequence":
-            # reshape (batch, features) → (batch, seq_len=1, features)
             return X_t.unsqueeze(1)
 
         if self.input_type == "image":
-            # reshape (batch, features) → (batch, channels=1, H, W)
             H = int(X_t.shape[1] ** 0.5)
             return X_t.view(-1, 1, H, H)
 
@@ -80,9 +93,11 @@ class BaseExtractor(nn.Module):
         self.out_dim = None  # set by subclasses
 
     def preprocess(self, X):
-        X = torch.tensor(
-            X, dtype=torch.float32, device=X.device if torch.is_tensor(X) else "cpu"
-        )
+        device = X.device if torch.is_tensor(X) else "cpu"
+        if torch.is_tensor(X):
+            X = X.detach().clone().to(device=device, dtype=torch.float32)
+        else:
+            X = torch.tensor(X, dtype=torch.float32, device=device)
         if self.input_type == "sequence":
             return X.unsqueeze(1)  # (batch, seq=1, features)
         return X
@@ -167,6 +182,7 @@ class PoissonNN(BasePoissonModel):
 
     def forward(self, X):
         # forward through sequential network, squeeze to remove last dim
+        X = self.preprocess(X)
         h = self.extractor(X)
         return self.head(h).squeeze(-1)
 

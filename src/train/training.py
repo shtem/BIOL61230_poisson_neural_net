@@ -9,7 +9,7 @@ from src.visualisation import (
 
 # import functions from the new modules so callers of `train.utils` don't break
 from src.train.utils import summarise_model_results
-from src.train.io import save_model, save_plot
+from src.train.io import save_model, save_plot, load_model
 from src.train.evaluate import evaluate_poisson_model
 
 
@@ -139,6 +139,7 @@ def run_experiment(
     cell_ids,
     scaler=None,
     plot: bool = True,
+    force: bool = False,
     save_models: bool = True,
     base_models_dir: Optional[Path] = None,
     base_results_dir: Optional[Path] = None,
@@ -173,6 +174,8 @@ def run_experiment(
         Feature scaler factory forwarded to ``fit_fn``.
     plot : bool, optional
         If True, create summary plots for the first cell in the results.
+    force : bool, optional
+        If True, ignore any cached model file and re-run the training.
     save_models : bool, optional
         If True, persist the returned model object(s) using
         :func:`src.train.io.save_model`.
@@ -188,7 +191,20 @@ def run_experiment(
         ``["results"]`` and ``["best_params"]`` as before.
     """
 
-    # Only pass scaler if the fit function accepts it
+    # ------------------------------------------------------------
+    # 0. Check for existing saved model
+    # ------------------------------------------------------------
+    bm = Path(base_models_dir or "resources/models")
+    bm.mkdir(parents=True, exist_ok=True)
+    model_path = bm / f"{model_name}.pkl"
+
+    if model_path.exists() and not force:
+        print(f"[run_experiment] Loading cached results from {model_path}")
+        return load_model(model_name, base_dir=bm)
+
+    # ------------------------------------------------------------
+    # 1. Fit model (no cache or force=True)
+    # ------------------------------------------------------------
     sig = inspect.signature(fit_fn)
     if "scaler" in sig.parameters:
         res = fit_fn(
@@ -206,9 +222,13 @@ def run_experiment(
             **fit_kwargs,
         )
 
+    # ------------------------------------------------------------
+    # 2. Plotting
+    # ------------------------------------------------------------
     if plot:
         summarise_model_results(res["results"], model_name=model_name)
         first = sorted(res["results"].keys())[0]
+
         fig1 = plot_training_curves(
             train_losses=res["results"][first].get("train_losses"),
             val_losses=res["results"][first].get("val_losses"),
@@ -221,33 +241,39 @@ def run_experiment(
     else:
         fig1 = fig2 = None
 
-    # if this is a PyTorch model, also generate an architecture diagram
+    # ------------------------------------------------------------
+    # 3. Architecture diagram (if PyTorch model)
+    # ------------------------------------------------------------
     if plot:
         try:
             import torch
             from src.visualisation import plot_nn_architecture
 
-            if isinstance(res["results"][first]["model"], torch.nn.Module):
-                br = Path(base_results_dir or "data/results")
+            first = sorted(res["results"].keys())[0]
+            model = res["results"][first]["model"]
+
+            if isinstance(model, torch.nn.Module):
+                br = Path(base_results_dir or "resources/results")
                 try:
-                    arch_path = plot_nn_architecture(
-                        res["results"][first]["model"], model_name, base_dir=br
-                    )
+                    arch_path = plot_nn_architecture(model, model_name, base_dir=br)
                     if arch_path is not None:
                         print(f"Architecture diagram saved to {arch_path}")
                 except Exception as exc:
-                    # render failure (likely graphviz missing); warn but continue
                     print("Warning: architecture plot failed:", exc)
         except ImportError:
-            # either torch or visualization helper missing; ignore
             pass
 
+    # ------------------------------------------------------------
+    # 4. Save model/results
+    # ------------------------------------------------------------
     if save_models:
-        bm = Path(base_models_dir or "data/models")
-        save_model(res, model_name, base_dir=bm)  # store entire result dict
+        save_model(res, model_name, base_dir=bm)
 
+    # ------------------------------------------------------------
+    # 5. Save plots
+    # ------------------------------------------------------------
     if plot and (fig1 is not None or fig2 is not None):
-        br = Path(base_results_dir or "data/results")
+        br = Path(base_results_dir or "resources/results")
         if fig1 is not None:
             save_plot(fig1, model_name, "train_losses.png", base_dir=br)
         if fig2 is not None:
