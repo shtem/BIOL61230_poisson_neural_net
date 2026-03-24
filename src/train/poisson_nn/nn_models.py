@@ -99,7 +99,8 @@ class BaseExtractor(nn.Module):
         else:
             X = torch.tensor(X, dtype=torch.float32, device=device)
         if self.input_type == "sequence":
-            return X.unsqueeze(1)  # (batch, seq=1, features)
+            # Treat features as a sequence of length n_features with 1 channel
+            return X.unsqueeze(-1)  # (batch, features, 1)
         return X
 
 
@@ -117,15 +118,24 @@ class CNNExtractor(BaseExtractor):
         for _ in range(num_layers):
             layers.append(nn.Conv1d(in_channels, channels, kernel, padding=kernel // 2))
             layers.append(nn.ReLU())
+            layers.append(nn.BatchNorm1d(channels))
+            layers.append(nn.Dropout(0.1))
             in_channels = channels
 
         self.conv = nn.Sequential(*layers)
         self.out_dim = channels  # after global pooling
+        self.adapter = nn.Sequential(
+            nn.Linear(self.out_dim, self.out_dim),
+            nn.ReLU(),
+        )
 
     def forward(self, X):
-        X = self.preprocess(X)  # (batch, 1, features)
+        X = self.preprocess(X)  # (batch, features, 1)
+        X = X.transpose(1, 2)  # → (batch, 1, features)
         h = self.conv(X)  # (batch, channels, features)
-        return h.mean(dim=2)  # global average pooling → (batch, channels)
+        h = h.mean(dim=2)  # (batch, channels)
+        h = self.adapter(h)  # (batch, channels)
+        return h
 
 
 class RNNExtractor(BaseExtractor):
@@ -133,18 +143,21 @@ class RNNExtractor(BaseExtractor):
         super().__init__(input_type="sequence")
 
         self.rnn = nn.GRU(
-            input_size=n_features,
+            input_size=1,
             hidden_size=hidden_dim,
             num_layers=num_layers,
             batch_first=True,
+            dropout=0.1,
         )
 
         self.out_dim = hidden_dim
+        self.norm = nn.LayerNorm(hidden_dim)
 
     def forward(self, X):
-        X = self.preprocess(X)  # (batch, seq=1, features)
-        out, _ = self.rnn(X)
-        return out[:, -1, :]  # last timestep → (batch, hidden_dim)
+        X = self.preprocess(X)  # (batch, features, 1)
+        out, _ = self.rnn(X)  # GRU sees seq_len = features
+        out = self.norm(out)
+        return out[:, -1, :]
 
 
 # ------------------------------------------------------------------
