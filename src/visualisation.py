@@ -231,14 +231,18 @@ def compare_r2_across_cells(
 
     fig, ax = plt.subplots(figsize=(14, 7))
 
-    for results, name in model_results_list:
+    cmap = plt.get_cmap("tab20")
+    n_models = len(model_results_list)
+    colours = [cmap(i % 20) for i in range(n_models)]
+
+    for (results, name), colour in zip(model_results_list, colours):
         r2 = [results[c][split]["pseudo_r2"] for c in cells]
-        ax.plot(cells, r2, label=name, marker="o")
+        ax.plot(cells, r2, label=name, marker="o", color=colour)
 
     ax.set_xlabel("Cell ID")
     ax.set_ylabel(f"{split.capitalize()} pseudo-R²")
     ax.set_title("Model performance across cells")
-    ax.legend()
+    ax.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
     fig.tight_layout()
 
     plt.close(fig)

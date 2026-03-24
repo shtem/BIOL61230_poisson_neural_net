@@ -213,14 +213,14 @@ def plot_clusters(features, labels, title):
     """Visualise clusters after projecting onto first two principal components.
 
     PCA is a quick way to reduce dimensionality for plotting.  Points are
-    colored by cluster label.
+    coloured by cluster label.
 
     Parameters
     ----------
     features : ndarray, shape (n_cells, n_features)
         Feature matrix to project.
     labels : ndarray, shape (n_cells,)
-        Cluster labels for coloring.
+        Cluster labels for colouring.
     title : str
         Plot title.
 
@@ -254,7 +254,7 @@ def plot_umap(features, labels, title):
     features : ndarray, shape (n_cells, n_features)
         Feature matrix to embed.
     labels : ndarray, shape (n_cells,)
-        Cluster labels for coloring.
+        Cluster labels for colouring.
     title : str
         Plot title.
 
