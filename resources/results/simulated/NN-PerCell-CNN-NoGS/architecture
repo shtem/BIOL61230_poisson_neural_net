@@ -1,5 +1,5 @@
 strict digraph model {
-	graph [ordering=in rankdir=TB size="13.799999999999999,13.799999999999999"]
+	graph [ordering=in rankdir=TB size="20.099999999999998,20.099999999999998"]
 	node [align=left fontname="Linux libertine" fontsize=10 height=0.2 margin=0 ranksep=0.1 shape=plaintext style=filled]
 	edge [fontsize=10]
 	0 [label=<
@@ -97,31 +97,31 @@ strict digraph model {
                     </TR>
                     <TR>
                         <TD COLSPAN="2">output: </TD>
+                        <TD COLSPAN="2">(1, 16, 1) </TD>
+                    </TR>
+                    </TABLE>> fillcolor=aliceblue]
+		8 [label=<
+                    <TABLE BORDER="0" CELLBORDER="1"
+                    CELLSPACING="0" CELLPADDING="4">
+                    <TR>
+                        <TD ROWSPAN="2">transpose<BR/>depth:2</TD>
+                        <TD COLSPAN="2">input:</TD>
+                        <TD COLSPAN="2">(1, 16, 1) </TD>
+                    </TR>
+                    <TR>
+                        <TD COLSPAN="2">output: </TD>
                         <TD COLSPAN="2">(1, 1, 16) </TD>
                     </TR>
                     </TABLE>> fillcolor=aliceblue]
 		subgraph cluster_3 {
 			fontsize=12 label=Sequential labeljust=l style=dashed
-			8 [label=<
+			9 [label=<
                     <TABLE BORDER="0" CELLBORDER="1"
                     CELLSPACING="0" CELLPADDING="4">
                     <TR>
                         <TD ROWSPAN="2">Conv1d<BR/>depth:3</TD>
                         <TD COLSPAN="2">input:</TD>
                         <TD COLSPAN="2">(1, 1, 16) </TD>
-                    </TR>
-                    <TR>
-                        <TD COLSPAN="2">output: </TD>
-                        <TD COLSPAN="2">(1, 16, 16) </TD>
-                    </TR>
-                    </TABLE>> fillcolor=darkseagreen1]
-			9 [label=<
-                    <TABLE BORDER="0" CELLBORDER="1"
-                    CELLSPACING="0" CELLPADDING="4">
-                    <TR>
-                        <TD ROWSPAN="2">ReLU<BR/>depth:3</TD>
-                        <TD COLSPAN="2">input:</TD>
-                        <TD COLSPAN="2">(1, 16, 16) </TD>
                     </TR>
                     <TR>
                         <TD COLSPAN="2">output: </TD>
@@ -132,7 +132,7 @@ strict digraph model {
                     <TABLE BORDER="0" CELLBORDER="1"
                     CELLSPACING="0" CELLPADDING="4">
                     <TR>
-                        <TD ROWSPAN="2">Conv1d<BR/>depth:3</TD>
+                        <TD ROWSPAN="2">ReLU<BR/>depth:3</TD>
                         <TD COLSPAN="2">input:</TD>
                         <TD COLSPAN="2">(1, 16, 16) </TD>
                     </TR>
@@ -145,7 +145,7 @@ strict digraph model {
                     <TABLE BORDER="0" CELLBORDER="1"
                     CELLSPACING="0" CELLPADDING="4">
                     <TR>
-                        <TD ROWSPAN="2">ReLU<BR/>depth:3</TD>
+                        <TD ROWSPAN="2">BatchNorm1d<BR/>depth:3</TD>
                         <TD COLSPAN="2">input:</TD>
                         <TD COLSPAN="2">(1, 16, 16) </TD>
                     </TR>
@@ -158,7 +158,7 @@ strict digraph model {
                     <TABLE BORDER="0" CELLBORDER="1"
                     CELLSPACING="0" CELLPADDING="4">
                     <TR>
-                        <TD ROWSPAN="2">Conv1d<BR/>depth:3</TD>
+                        <TD ROWSPAN="2">Dropout<BR/>depth:3</TD>
                         <TD COLSPAN="2">input:</TD>
                         <TD COLSPAN="2">(1, 16, 16) </TD>
                     </TR>
@@ -171,6 +171,19 @@ strict digraph model {
                     <TABLE BORDER="0" CELLBORDER="1"
                     CELLSPACING="0" CELLPADDING="4">
                     <TR>
+                        <TD ROWSPAN="2">Conv1d<BR/>depth:3</TD>
+                        <TD COLSPAN="2">input:</TD>
+                        <TD COLSPAN="2">(1, 16, 16) </TD>
+                    </TR>
+                    <TR>
+                        <TD COLSPAN="2">output: </TD>
+                        <TD COLSPAN="2">(1, 16, 16) </TD>
+                    </TR>
+                    </TABLE>> fillcolor=darkseagreen1]
+			14 [label=<
+                    <TABLE BORDER="0" CELLBORDER="1"
+                    CELLSPACING="0" CELLPADDING="4">
+                    <TR>
                         <TD ROWSPAN="2">ReLU<BR/>depth:3</TD>
                         <TD COLSPAN="2">input:</TD>
                         <TD COLSPAN="2">(1, 16, 16) </TD>
@@ -180,8 +193,86 @@ strict digraph model {
                         <TD COLSPAN="2">(1, 16, 16) </TD>
                     </TR>
                     </TABLE>> fillcolor=darkseagreen1]
+			15 [label=<
+                    <TABLE BORDER="0" CELLBORDER="1"
+                    CELLSPACING="0" CELLPADDING="4">
+                    <TR>
+                        <TD ROWSPAN="2">BatchNorm1d<BR/>depth:3</TD>
+                        <TD COLSPAN="2">input:</TD>
+                        <TD COLSPAN="2">(1, 16, 16) </TD>
+                    </TR>
+                    <TR>
+                        <TD COLSPAN="2">output: </TD>
+                        <TD COLSPAN="2">(1, 16, 16) </TD>
+                    </TR>
+                    </TABLE>> fillcolor=darkseagreen1]
+			16 [label=<
+                    <TABLE BORDER="0" CELLBORDER="1"
+                    CELLSPACING="0" CELLPADDING="4">
+                    <TR>
+                        <TD ROWSPAN="2">Dropout<BR/>depth:3</TD>
+                        <TD COLSPAN="2">input:</TD>
+                        <TD COLSPAN="2">(1, 16, 16) </TD>
+                    </TR>
+                    <TR>
+                        <TD COLSPAN="2">output: </TD>
+                        <TD COLSPAN="2">(1, 16, 16) </TD>
+                    </TR>
+                    </TABLE>> fillcolor=darkseagreen1]
+			17 [label=<
+                    <TABLE BORDER="0" CELLBORDER="1"
+                    CELLSPACING="0" CELLPADDING="4">
+                    <TR>
+                        <TD ROWSPAN="2">Conv1d<BR/>depth:3</TD>
+                        <TD COLSPAN="2">input:</TD>
+                        <TD COLSPAN="2">(1, 16, 16) </TD>
+                    </TR>
+                    <TR>
+                        <TD COLSPAN="2">output: </TD>
+                        <TD COLSPAN="2">(1, 16, 16) </TD>
+                    </TR>
+                    </TABLE>> fillcolor=darkseagreen1]
+			18 [label=<
+                    <TABLE BORDER="0" CELLBORDER="1"
+                    CELLSPACING="0" CELLPADDING="4">
+                    <TR>
+                        <TD ROWSPAN="2">ReLU<BR/>depth:3</TD>
+                        <TD COLSPAN="2">input:</TD>
+                        <TD COLSPAN="2">(1, 16, 16) </TD>
+                    </TR>
+                    <TR>
+                        <TD COLSPAN="2">output: </TD>
+                        <TD COLSPAN="2">(1, 16, 16) </TD>
+                    </TR>
+                    </TABLE>> fillcolor=darkseagreen1]
+			19 [label=<
+                    <TABLE BORDER="0" CELLBORDER="1"
+                    CELLSPACING="0" CELLPADDING="4">
+                    <TR>
+                        <TD ROWSPAN="2">BatchNorm1d<BR/>depth:3</TD>
+                        <TD COLSPAN="2">input:</TD>
+                        <TD COLSPAN="2">(1, 16, 16) </TD>
+                    </TR>
+                    <TR>
+                        <TD COLSPAN="2">output: </TD>
+                        <TD COLSPAN="2">(1, 16, 16) </TD>
+                    </TR>
+                    </TABLE>> fillcolor=darkseagreen1]
+			20 [label=<
+                    <TABLE BORDER="0" CELLBORDER="1"
+                    CELLSPACING="0" CELLPADDING="4">
+                    <TR>
+                        <TD ROWSPAN="2">Dropout<BR/>depth:3</TD>
+                        <TD COLSPAN="2">input:</TD>
+                        <TD COLSPAN="2">(1, 16, 16) </TD>
+                    </TR>
+                    <TR>
+                        <TD COLSPAN="2">output: </TD>
+                        <TD COLSPAN="2">(1, 16, 16) </TD>
+                    </TR>
+                    </TABLE>> fillcolor=darkseagreen1]
 		}
-		14 [label=<
+		21 [label=<
                     <TABLE BORDER="0" CELLBORDER="1"
                     CELLSPACING="0" CELLPADDING="4">
                     <TR>
@@ -194,10 +285,39 @@ strict digraph model {
                         <TD COLSPAN="2">(1, 16) </TD>
                     </TR>
                     </TABLE>> fillcolor=aliceblue]
+		subgraph cluster_4 {
+			fontsize=12 label=Sequential labeljust=l style=dashed
+			22 [label=<
+                    <TABLE BORDER="0" CELLBORDER="1"
+                    CELLSPACING="0" CELLPADDING="4">
+                    <TR>
+                        <TD ROWSPAN="2">Linear<BR/>depth:3</TD>
+                        <TD COLSPAN="2">input:</TD>
+                        <TD COLSPAN="2">(1, 16) </TD>
+                    </TR>
+                    <TR>
+                        <TD COLSPAN="2">output: </TD>
+                        <TD COLSPAN="2">(1, 16) </TD>
+                    </TR>
+                    </TABLE>> fillcolor=darkseagreen1]
+			23 [label=<
+                    <TABLE BORDER="0" CELLBORDER="1"
+                    CELLSPACING="0" CELLPADDING="4">
+                    <TR>
+                        <TD ROWSPAN="2">ReLU<BR/>depth:3</TD>
+                        <TD COLSPAN="2">input:</TD>
+                        <TD COLSPAN="2">(1, 16) </TD>
+                    </TR>
+                    <TR>
+                        <TD COLSPAN="2">output: </TD>
+                        <TD COLSPAN="2">(1, 16) </TD>
+                    </TR>
+                    </TABLE>> fillcolor=darkseagreen1]
+		}
 	}
-	subgraph cluster_4 {
+	subgraph cluster_5 {
 		fontsize=12 label=Sequential labeljust=l style=dashed
-		15 [label=<
+		24 [label=<
                     <TABLE BORDER="0" CELLBORDER="1"
                     CELLSPACING="0" CELLPADDING="4">
                     <TR>
@@ -210,7 +330,7 @@ strict digraph model {
                         <TD COLSPAN="2">(1, 1) </TD>
                     </TR>
                     </TABLE>> fillcolor=darkseagreen1]
-		16 [label=<
+		25 [label=<
                     <TABLE BORDER="0" CELLBORDER="1"
                     CELLSPACING="0" CELLPADDING="4">
                     <TR>
@@ -224,7 +344,7 @@ strict digraph model {
                     </TR>
                     </TABLE>> fillcolor=darkseagreen1]
 	}
-	17 [label=<
+	26 [label=<
                     <TABLE BORDER="0" CELLBORDER="1"
                     CELLSPACING="0" CELLPADDING="4">
                     <TR>
@@ -237,7 +357,7 @@ strict digraph model {
                         <TD COLSPAN="2">(1,) </TD>
                     </TR>
                     </TABLE>> fillcolor=aliceblue]
-	18 [label=<
+	27 [label=<
                     <TABLE BORDER="0" CELLBORDER="1"
                     CELLSPACING="0" CELLPADDING="4">
                         <TR><TD>output-tensor<BR/>depth:0</TD><TD>(1,)</TD></TR>
@@ -260,4 +380,13 @@ strict digraph model {
 	15 -> 16
 	16 -> 17
 	17 -> 18
+	18 -> 19
+	19 -> 20
+	20 -> 21
+	21 -> 22
+	22 -> 23
+	23 -> 24
+	24 -> 25
+	25 -> 26
+	26 -> 27
 }
