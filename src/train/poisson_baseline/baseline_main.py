@@ -18,7 +18,7 @@ def fit_poisson_glm(
     k_folds=3,
     verbose=False,
 ):
-    """Baseline per-cell Poisson generalized linear model.
+    """Baseline per-cell Poisson generalised linear model.
 
     Two operation modes are supported:
 
@@ -35,7 +35,7 @@ def fit_poisson_glm(
     cell_ids : ndarray
         Cell identifiers for each time bin.
     alpha : float
-        Regularization strength for PoissonRegressor when not tuning.
+        Regularisation strength for PoissonRegressor when not tuning.
     alpha_grid : list or None
         List of candidate alphas used during grid search.
     grid_search : bool

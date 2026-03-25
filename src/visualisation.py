@@ -210,14 +210,14 @@ def compare_r2_across_cells(
     model_results_list,
     split="test",
 ):
-    """Line plot of pseudo‑R² values across cells for an arbitrary set of models.
+    """Line plot of pseudo-R² values across cells for an arbitrary set of models.
 
     Parameters
     ----------
     model_results_list : list of tuples
         ``(results_dict, model_name)`` pairs for each model to include.
     split : str, optional
-        Which split to use when extracting pseudo‑R².
+        Which split to use when extracting pseudo-R².
 
     Returns
     -------
@@ -429,14 +429,38 @@ def journal_plot_pack(
 
 
 # ------------------------------------------------------------------
-# Neural network architecture visualization
+# Neural network architecture visualisation
 # ------------------------------------------------------------------
 
 
 def plot_nn_architecture(model, model_name: str, base_dir="resources/results"):
     """
-    Visualise the *actual* PyTorch module architecture (layers, shapes, hierarchy)
-    using torchview instead of torchviz.
+    Generate and save a visual diagram of a PyTorch model's architecture using
+    ``torchview``. This utility traces the model's forward graph, expands nested
+    submodules, and renders a clean hierarchy of layers and tensor shapes.
+
+    The function attempts to infer the appropriate input shape by inspecting
+    ``model.input_type`` or, if present, the ``input_type`` attribute of a
+    contained extractor. For flat models, the input is treated as a single
+    feature vector; for sequence models, a (batch, seq_len, features) tensor is
+    constructed; and for image models, a square spatial layout is assumed.
+
+    The resulting architecture diagram is written to a subdirectory named after
+    ``model_name`` inside ``base_dir``. The file is saved as ``architecture.png``.
+
+    Parameters
+    ----------
+    model : torch.nn.Module
+        The model to visualise. May contain nested extractors or shared modules.
+    model_name : str
+        Name used to create the output directory and filename.
+    base_dir : str or Path, optional
+        Root directory under which the architecture image is saved.
+
+    Returns
+    -------
+    pathlib.Path
+        Path to the saved ``architecture.png`` file.
     """
     # infer input dimension
     if hasattr(model, "input_dim"):

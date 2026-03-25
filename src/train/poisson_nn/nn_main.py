@@ -21,7 +21,8 @@ from src.train.hyperparam_search import (
 # Unified training wrapper (works for both trainers)
 # ------------------------------------------------------------
 def run_trainer(trainer, model, Xtr, ytr=None, Xv=None, yv=None):
-    """Dispatch call to the appropriate trainer and normalize outputs.
+    """
+    Dispatch call to the appropriate trainer and normalise outputs.
 
     Both trainer classes return slightly different tuples.  This helper inspects
     the ``trainer`` instance, calls its ``train`` method with the correct
@@ -81,12 +82,12 @@ def run_trainer(trainer, model, Xtr, ytr=None, Xv=None, yv=None):
 # ------------------------------------------------------------
 def make_model(model_type, n_features, n_cells, **mp):
     """
-    Construct a transfer‑learning Poisson neural network architecture.
+    Construct a transfer-learning Poisson neural network architecture.
 
     This factory function centralises model creation for all supported
-    transfer‑learning architectures. It ensures that the rest of the training
-    and grid‑search pipeline can remain unchanged while allowing flexible
-    selection between different shared‑representation designs.
+    transfer-learning architectures. It ensures that the rest of the training
+    and grid-search pipeline can remain unchanged while allowing flexible
+    selection between different shared-representation designs.
 
     Parameters
     ----------
@@ -94,17 +95,17 @@ def make_model(model_type, n_features, n_cells, **mp):
         Specifies which architecture to instantiate:
 
         - "shared_hidden":
-            Deep shared feature extractor with simple linear per‑cell heads.
+            Deep shared feature extractor with simple linear per-cell heads.
             Expects `mp["hidden_sizes"]` (list of ints).
 
         - "shared_nonlinear_heads":
-            Shallow shared trunk with nonlinear per‑cell MLP heads.
+            Shallow shared trunk with nonlinear per-cell MLP heads.
             Expects:
                 `mp["shared_sizes"]` (list of ints)
                 `mp["head_sizes"]`   (list of ints)
 
         - "shared_first_layer":
-            Only the first layer is shared; all deeper layers are per‑cell.
+            Only the first layer is shared; all deeper layers are per-cell.
             Expects:
                 `mp["shared_dim"]`  (int)
                 `mp["head_sizes"]`  (list of ints)
@@ -116,14 +117,14 @@ def make_model(model_type, n_features, n_cells, **mp):
         Number of cells, used to create the appropriate number of output heads.
 
     **mp : dict
-        Model‑specific hyperparameters required by the chosen architecture.
+        Model-specific hyperparameters required by the chosen architecture.
         Missing or incompatible keys will raise a KeyError or ValueError.
 
     Returns
     -------
     nn.Module
         A fully constructed Poisson neural network model matching the requested
-        architecture and ready for training with the transfer‑learning trainer.
+        architecture and ready for training with the transfer-learning trainer.
     """
     shared_extractor = mp.get("shared_extractor", None)
     if model_type == "shared_hidden":
@@ -179,7 +180,8 @@ def fit_poisson_nn(
     scaler=None,
     verbose=False,
 ):
-    """Train independent Poisson neural nets for each cell.
+    """
+    Train independent Poisson neural nets for each cell.
 
     Two modes are supported:
 

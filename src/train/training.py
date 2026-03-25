@@ -25,9 +25,10 @@ def fit_model_per_cell(
     scaler=None,
     custom_train_fn=None,
 ):
-    """Fit separate models for each cell and evaluate their performance.
+    """
+    Fit separate models for each cell and evaluate their performance.
 
-    Convenience routine used by higher‑level wrappers to train one estimator
+    Convenience routine used by higher-level wrappers to train one estimator
     per cell.  For each cell id in ``X_train`` the supplied ``model_class``
     is instantiated (with ``model_kwargs``), optionally wrapped with a
     scaler, and fitted using either its own ``fit`` method or a ``custom_train_fn``.
@@ -144,7 +145,8 @@ def run_experiment(
     base_models_dir: Optional[Path] = None,
     base_results_dir: Optional[Path] = None,
 ):
-    """Unified training/evaluation routine for notebook experiments.
+    """
+    Unified training/evaluation routine for notebook experiments.
 
     This helper centralises the sequence that was previously duplicated in the
     notebook:

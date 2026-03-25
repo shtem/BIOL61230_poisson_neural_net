@@ -3,9 +3,10 @@ from sklearn.metrics import mean_poisson_deviance
 
 
 def pseudo_r2(y_true, y_pred):
-    """Compute the pseudo-R² for Poisson regression.
+    """
+    Compute the pseudo-R² for Poisson regression.
 
-    The pseudo‑R² statistic is defined as::
+    The pseudo-R² statistic is defined as::
 
         R2_pseudo = 1 - (deviance_model / deviance_null)
 
@@ -37,7 +38,8 @@ def pseudo_r2(y_true, y_pred):
 
 
 def poisson_log_likelihood(y_true, y_pred):
-    """Calculate the log-likelihood under a Poisson model.
+    """
+    Calculate the log-likelihood under a Poisson model.
 
     The log-likelihood for each observation is::
 
@@ -68,7 +70,8 @@ def poisson_log_likelihood(y_true, y_pred):
 
 
 def evaluate_poisson_model(y_true, y_pred):
-    """Evaluate Poisson regression predictions with standard metrics.
+    """
+    Evaluate Poisson regression predictions with standard metrics.
 
     This wrapper combines the fundamental evaluation utilities defined above
     and returns a dictionary so that results can be stored alongside models or

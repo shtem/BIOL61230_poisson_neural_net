@@ -8,7 +8,8 @@ from src.train.poisson_nn.nn_training import TransferLearningTrainer
 
 
 def _expand_param_grid(param_grid):
-    """Generate all parameter combinations from a grid specification.
+    """
+    Generate all parameter combinations from a grid specification.
 
     Parameters
     ----------
@@ -30,7 +31,8 @@ def _expand_param_grid(param_grid):
 
 
 def _freeze_params(params):
-    """Produce a hashable representation of a parameter dict.
+    """
+    Produce a hashable representation of a parameter dict.
 
     The returned tuple consists of sorted ``(key, value)`` pairs. Sorting
     ensures that the ordering is deterministic, so two dicts with the same
@@ -62,11 +64,12 @@ def cross_validate_model_per_cell(
     trainer_params=None,
     verbose=False,
 ):
-    """Perform k-fold cross-validation separately for each cell.
+    """
+    Perform k-fold cross-validation separately for each cell.
 
     This helper rearranges the full dataset by cell, then for each cell
     performs ``k_folds`` splits and fits the provided ``model_class`` on the
-    training portion.  Evaluation uses the pseudo‑R² score defined in
+    training portion.  Evaluation uses the pseudo-R² score defined in
     :mod:`src.train.evaluate`.
 
     Parameters
@@ -98,7 +101,7 @@ def cross_validate_model_per_cell(
     Returns
     -------
     dict
-        Mapping from each cell ID to its mean cross-validated pseudo‑R² score.
+        Mapping from each cell ID to its mean cross-validated pseudo-R² score.
     """
     if trainer_params is None:
         trainer_params = {}
@@ -165,13 +168,14 @@ def grid_search_per_cell(
     custom_train_fn=None,
     verbose=False,
 ):
-    """Perform grid search on both model and trainer hyperparameters per cell.
+    """
+    Perform grid search on both model and trainer hyperparameters per cell.
 
     This routine coordinates a full-factorial search over two sets of
     hyperparameters: those belonging to the model itself and those associated
     with a custom training procedure (e.g. neural network trainer settings).
     Each candidate pair of parameter dictionaries is evaluated by calling
-    :func:`cross_validate_model_per_cell` and the mean pseudo‑R² is recorded for
+    :func:`cross_validate_model_per_cell` and the mean pseudo-R² is recorded for
     every cell. The best parameter tuple is then chosen independently for each
     cell.
 
@@ -293,13 +297,14 @@ def grid_search_transfer_learning(
     verbose=False,
     agg_method="median",
 ):
-    """Grid search hyperparameters for a transfer‑learning architecture.
+    """
+    Grid search hyperparameters for a transfer-learning architecture.
 
-    This routine evaluates each candidate combination on a per‑cell
-    validation fold and then aggregates the per‑cell pseudo‑R² scores to
+    This routine evaluates each candidate combination on a per-cell
+    validation fold and then aggregates the per-cell pseudo-R² scores to
     determine which set of hyperparameters is best.  By default the
-    **median** pseudo‑R² across cells is used, which reduces the influence of
-    a few poorly‑predicted cells.  If you prefer to maximise the overall
+    **median** pseudo-R² across cells is used, which reduces the influence of
+    a few poorly-predicted cells.  If you prefer to maximise the overall
     average performance you may pass ``agg_method="mean"``.
 
     Parameters
@@ -408,7 +413,7 @@ def grid_search_transfer_learning(
 
     # ------------------------------------------------------------
     # Select best params based on aggregate across cells
-    # (here: median pseudo‑R² for robustness to outliers)
+    # (here: median pseudo-R² for robustness to outliers)
     # Multiple aggregation strategies could be used; median is less sensitive
     # to a few poorly-predicted cells than a simple mean.
     # ------------------------------------------------------------

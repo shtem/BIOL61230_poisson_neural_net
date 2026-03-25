@@ -6,7 +6,8 @@ from sklearn.impute import SimpleImputer
 
 
 def load_data(path, filenames=None):
-    """Load and concatenate multiple MATLAB data files.
+    """
+    Load and concatenate multiple MATLAB data files.
 
     Each file is expected to contain arrays ``X``, ``y``, ``cell_ids`` and
     ``rec_id``.  To avoid identifier collisions across files we offset the
@@ -95,7 +96,8 @@ def load_data(path, filenames=None):
 
 
 def save_data(filepath, filename, results):
-    """Persist a dictionary of results to a MATLAB .mat file.
+    """
+    Persist a dictionary of results to a MATLAB .mat file.
 
     Parameters
     ----------
@@ -111,7 +113,8 @@ def save_data(filepath, filename, results):
 
 
 def get_cell_slice(cell_idx, cell_ids):
-    """Return indices of samples belonging to a given cell.
+    """
+    Return indices of samples belonging to a given cell.
 
     Parameters
     ----------
@@ -130,7 +133,8 @@ def get_cell_slice(cell_idx, cell_ids):
 
 
 def get_trial_slice(cell_idx, trial_idx, cell_ids, trials_per_cell=120):
-    """Compute a slice covering a particular trial for a given cell.
+    """
+    Compute a slice covering a particular trial for a given cell.
 
     Trials are assumed to be contiguous blocks of equal length within each
     cell's time series.  This helper first locates the indices for the cell,
@@ -163,7 +167,8 @@ def get_trial_slice(cell_idx, trial_idx, cell_ids, trials_per_cell=120):
 
 
 def split_cell_data(cell_ids, train_frac=0.7, val_frac=0.15, use_val=True):
-    """Generate index splits for each cell into train/val/test sets.
+    """
+    Generate index splits for each cell into train/val/test sets.
 
     For simplicity the split is non-random: early time bins go to train,
     middle to validation, and late to test.  The fractions ``train_frac`` and
@@ -198,7 +203,7 @@ def split_cell_data(cell_ids, train_frac=0.7, val_frac=0.15, use_val=True):
         n_train = int(train_frac * n)
         n_val = int(val_frac * n) if use_val else 0
 
-        # temporarily just do a simple split (not randomized)
+        # temporarily just do a simple split (not randomised)
         # early trail bins in train, middle in val, late in test
         # total 3000 bins per cell, 120 trails, 25 bins per trial
         # following a 70/15/15 split at the trial level, we get:
@@ -220,7 +225,8 @@ def split_cell_data(cell_ids, train_frac=0.7, val_frac=0.15, use_val=True):
 def prepare_cellwise_datasets(
     X, Y, cell_ids, train_frac=0.7, val_frac=0.15, use_val=True
 ):
-    """Convert global arrays into per-cell train/val/test dictionaries.
+    """
+    Convert global arrays into per-cell train/val/test dictionaries.
 
     This function first obtains index splits via :func:`split_cell_data` and
     then slices the feature matrix ``X`` and response vector ``Y`` accordingly.
@@ -271,7 +277,8 @@ def prepare_cellwise_datasets(
 
 
 def flatten_cellwise_data(X_dict, Y_dict):
-    """Convert per-cell dicts into flattened arrays suitable for grid search.
+    """
+    Convert per-cell dicts into flattened arrays suitable for grid search.
 
     The reverse of :func:`prepare_cellwise_datasets`; it stitches each cell's
     data back into a global feature matrix and target vector while also

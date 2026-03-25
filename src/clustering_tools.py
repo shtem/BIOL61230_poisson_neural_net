@@ -14,7 +14,8 @@ from scipy.cluster.hierarchy import linkage, dendrogram, fcluster
 # Feature extraction
 # -----------------------------
 def extract_corr_features(X, Y, cell_ids):
-    """Compute per-cell correlation between covariates and spike counts.
+    """
+    Compute per-cell correlation between covariates and spike counts.
 
     This simple feature extractor treats each covariate (row of ``X``) as a
     predictor and computes the Pearson correlation with the corresponding
@@ -51,7 +52,8 @@ def extract_corr_features(X, Y, cell_ids):
 
 
 def extract_glm_features(X, Y, cell_ids):
-    """Generate features by fitting a Poisson GLM per cell and using weights.
+    """
+    Generate features by fitting a Poisson GLM per cell and using weights.
 
     For each cell, the design matrix (features across time) is transposed to
     shape ``(n_time_bins_cell, n_features)`` and a Poisson regression is fit.
@@ -87,7 +89,8 @@ def extract_glm_features(X, Y, cell_ids):
 # Feature normalisation
 # -----------------------------
 def scale_features(features):
-    """Standardize feature matrix to zero mean and unit variance across cells.
+    """
+    Standardise feature matrix to zero mean and unit variance across cells.
 
     This global scaling ensures that each feature contributes equally to
     distance-based clustering algorithms.
@@ -95,18 +98,19 @@ def scale_features(features):
     Parameters
     ----------
     features : ndarray, shape (n_cells, n_features)
-        Raw feature matrix to be standardized.
+        Raw feature matrix to be standardised.
 
     Returns
     -------
     ndarray, shape (n_cells, n_features)
-        Standardized features with zero mean and unit variance.
+        Standardised features with sero mean and unit variance.
     """
     return StandardScaler().fit_transform(features)
 
 
 def zscore_features_within_subject(features, cell_ids, rec_ids):
-    """Normalize features separately for each recording/subject.
+    """
+    Normalise features separately for each recording/subject.
 
     This is helpful when recordings come from multiple subjects and one wishes
     to remove subject-specific offsets or scale differences before clustering.
@@ -116,7 +120,7 @@ def zscore_features_within_subject(features, cell_ids, rec_ids):
     Parameters
     ----------
     features : ndarray, shape (n_cells, n_features)
-        Feature matrix to be normalized.
+        Feature matrix to be normalised.
     cell_ids : ndarray, shape (n_cells,)
         Unique identifiers for each cell.
     rec_ids : ndarray, shape (n_cells,)
@@ -145,7 +149,8 @@ def zscore_features_within_subject(features, cell_ids, rec_ids):
 # Clustering algorithms
 # -----------------------------
 def kmeans_cluster(features, n_clusters=2):
-    """Perform K‑means clustering on cell feature vectors.
+    """
+    Perform K-means clustering on cell feature vectors.
 
     Parameters
     ----------
@@ -163,7 +168,8 @@ def kmeans_cluster(features, n_clusters=2):
 
 
 def hierarchical_cluster(features, method="ward", max_clusters=None, show_plot=True):
-    """Apply hierarchical clustering and optionally plot dendrogram.
+    """
+    Apply hierarchical clustering and optionally plot dendrogram.
 
     The linkage matrix ``Z`` is computed from the feature matrix.  If
     ``show_plot`` is True a matplotlib figure containing the dendrogram is
@@ -210,7 +216,8 @@ def hierarchical_cluster(features, method="ward", max_clusters=None, show_plot=T
 # Visualisation
 # -----------------------------
 def plot_clusters(features, labels, title):
-    """Visualise clusters after projecting onto first two principal components.
+    """
+    Visualise clusters after projecting onto first two principal components.
 
     PCA is a quick way to reduce dimensionality for plotting.  Points are
     coloured by cluster label.
@@ -244,7 +251,8 @@ def plot_clusters(features, labels, title):
 
 
 def plot_umap(features, labels, title):
-    """Use UMAP to embed features in 2D for cluster visualisation.
+    """
+    Use UMAP to embed features in 2D for cluster visualisation.
 
     UMAP often preserves local structure better than PCA and can reveal
     nonlinear relationships between clusters.
@@ -288,7 +296,8 @@ def plot_umap(features, labels, title):
 # Cluster summaries and reporting
 # -----------------------------
 def summarise_clusters(features, labels):
-    """Compute centroid (mean feature vector) for each cluster.
+    """
+    Compute centroid (mean feature vector) for each cluster.
 
     This summary can be used to understand the typical tuning profile of each
     group of cells.
@@ -310,7 +319,8 @@ def summarise_clusters(features, labels):
 
 
 def plot_cluster_tuning(features, labels, title_prefix="Cluster"):
-    """Visualise average feature responses for each cluster.
+    """
+    Visualise average feature responses for each cluster.
 
     Bar plots are generated showing the mean feature value across cells within
     each cluster, which is useful when features represent tuning to covariates.
@@ -348,7 +358,8 @@ def plot_cluster_tuning(features, labels, title_prefix="Cluster"):
 
 
 def suggest_labels(cluster_summaries):
-    """Generate textual descriptions of each cluster's dominant feature.
+    """
+    Generate textual descriptions of each cluster's dominant feature.
 
     Identifies the covariate with maximum absolute mean weight and reports
     whether the tuning is positive or negative.  This is a simple heuristic for
@@ -373,7 +384,8 @@ def suggest_labels(cluster_summaries):
 
 
 def evaluate_clustering(features, labels):
-    """Compute silhouette score as an internal measure of cluster separation.
+    """
+    Compute silhouette score as an internal measure of cluster separation.
 
     The silhouette score ranges from -1 to +1, with higher values indicating
     that samples are well-matched to their own cluster and poorly matched to
@@ -393,7 +405,8 @@ def evaluate_clustering(features, labels):
 
 
 def map_cells_to_clusters(labels, cell_ids):
-    """Create a dictionary mapping each unique cell ID to its cluster label.
+    """
+    Create a dictionary mapping each unique cell ID to its cluster label.
 
     Useful for later lookup or exporting membership information.
 
@@ -412,7 +425,8 @@ def map_cells_to_clusters(labels, cell_ids):
 
 
 def print_cluster_membership(labels, cell_ids):
-    """Display cells belonging to each cluster and return the mapping.
+    """
+    Display cells belonging to each cluster and return the mapping.
 
     Parameters are same as :func:`map_cells_to_clusters`.  The printed output is
     grouped by cluster label for easy human inspection.
@@ -439,7 +453,8 @@ def print_cluster_membership(labels, cell_ids):
 
 
 def cluster_report(features, labels, cell_ids, title_prefix="Cluster"):
-    """Produce a full textual and graphical summary of clustering results.
+    """
+    Produce a full textual and graphical summary of clustering results.
 
     This helper prints a report to the console and returns a dictionary
     containing various artefacts such as membership mappings, cluster
@@ -512,7 +527,8 @@ def run_clustering(
     title_prefix="Clustering",
     show_report=True,
 ):
-    """Execute end-to-end cell clustering workflow and optionally report.
+    """
+    Execute end-to-end cell clustering workflow and optionally report.
 
     This convenience function looks up the requested feature extractor and
     clustering algorithm from the registries defined above, normalises the

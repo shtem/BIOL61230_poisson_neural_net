@@ -1,5 +1,6 @@
 def summarise_model_results(results, model_name="Model"):
-    """Print a human‑readable summary of per‑cell evaluation metrics.
+    """
+    Print a human-readable summary of per-cell evaluation metrics.
 
     Parameters
     ----------

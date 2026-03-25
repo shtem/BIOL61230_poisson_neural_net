@@ -4,9 +4,10 @@ import matplotlib.pyplot as plt
 
 
 def save_model(model, model_name: str, base_dir: Path = Path("data/models")):
-    """Persist a model object to disk.
+    """
+    Persist a model object to disk.
 
-    The model is serialized with :mod:`pickle` and stored under
+    The model is serialised with :mod:`pickle` and stored under
     ``{base_dir}/{model_name}.pkl``.  Directories are created if necessary.
 
     Parameters
@@ -32,7 +33,8 @@ def save_model(model, model_name: str, base_dir: Path = Path("data/models")):
 
 
 def load_model(model_name: str, base_dir: Path = Path("data/models")):
-    """Load a pickled model previously saved with :func:`save_model`.
+    """
+    Load a pickled model previously saved with :func:`save_model`.
 
     Parameters
     ----------
@@ -59,7 +61,8 @@ def save_plot(
     filename: str,
     base_dir: Path = Path("data/results"),
 ):
-    """Save a Matplotlib figure to a results subdirectory.
+    """
+    Save a Matplotlib figure to a results subdirectory.
 
     Parameters
     ----------

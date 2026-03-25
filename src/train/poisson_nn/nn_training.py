@@ -5,12 +5,63 @@ from torch.utils.data import DataLoader, TensorDataset
 
 
 class BaseTrainer(ABC):
-    """Abstract training utility for Poisson neural networks.
+    """
+    Abstract base class for training Poisson neural network models.
 
-    Handles common configuration such as optimizer settings, device selection,
-    batch size heuristic, and optional L1 regularization. Concrete trainers must
-    implement the ``train`` method that accepts a model and appropriate data
-    and returns a trained model (plus any diagnostics).
+    This class centralises common training configuration such as learning rate,
+    number of epochs, weight decay, optional L1 regularisation, device
+    selection, and batch-size heuristics. Concrete trainer subclasses implement
+    the actual optimisation loop in ``train`` while reusing the shared utilities
+    provided here.
+
+    The trainer automatically selects a GPU if available (unless a device is
+    explicitly provided) and exposes helper methods for computing L1 penalties
+    and determining an appropriate batch size based on dataset size. Returning
+    ``None`` from ``_get_batch_size`` signals that the caller should perform
+    full-batch training without a DataLoader.
+
+    This abstraction allows different training strategies (full-batch,
+    mini-batch, curriculum learning, multi-cell training, etc.) to share a
+    consistent interface and configuration structure.
+
+    Parameters
+    ----------
+    lr : float, optional
+        Learning rate for the optimiser.
+    epochs : int, optional
+        Number of training epochs.
+    weight_decay : float, optional
+        L2 regularisation strength passed to the optimiser.
+    l1_lambda : float, optional
+        Coefficient for optional L1 regularisation applied manually via
+        ``_l1_penalty``.
+    batch_size : int or "auto", optional
+        Batch size to use. If ``"auto"``, the trainer chooses full-batch for
+        small datasets and 128 for larger ones.
+    device : str or torch.device, optional
+        Device on which to run training. If ``None``, the trainer selects GPU if
+        available, otherwise CPU.
+
+    Attributes
+    ----------
+    device : torch.device
+        The device used for training and inference.
+    lr : float
+        Learning rate.
+    epochs : int
+        Number of training epochs.
+    weight_decay : float
+        L2 regularisation strength.
+    l1_lambda : float
+        L1 regularisation coefficient.
+    batch_size : int or "auto"
+        Batch size configuration.
+
+    Notes
+    -----
+    Subclasses must implement the ``train`` method, which should accept a model
+    and training data, perform optimisation, and return the trained model along
+    with any diagnostics (loss curves, metrics, etc.).
     """
 
     def __init__(
@@ -28,7 +79,7 @@ class BaseTrainer(ABC):
         self.l1_lambda = l1_lambda
         self.batch_size = batch_size
 
-        # Automatically choose GPU if available unless overridden
+        # Automatically choose GPU if available unless the user overrides it
         self.device = (
             torch.device(device)
             if device
@@ -36,33 +87,116 @@ class BaseTrainer(ABC):
         )
 
     def _get_batch_size(self, n_samples):
-        """Decide batch size based on dataset size and user preference.
+        """
+        Determine an appropriate batch size based on dataset size and user settings.
 
-        Using "auto" returns ``None`` (full-batch) for small datasets and 128 for
-        larger ones. Returning ``None`` signals the caller to bypass DataLoader
-        and use the entire set in one go.
+        If ``batch_size`` is ``"auto"``, the trainer uses:
+            - full-batch (``None``) for small datasets (< 2000 samples)
+            - mini-batch (128) for larger datasets
+
+        Returning ``None`` signals that the caller should bypass DataLoader
+        construction and train on the entire dataset in a single batch.
+
+        Parameters
+        ----------
+        n_samples : int
+            Number of samples in the dataset.
+
+        Returns
+        -------
+        int or None
+            Batch size to use, or ``None`` for full-batch training.
         """
         if self.batch_size == "auto":
             return None if n_samples < 2000 else 128
         return self.batch_size
 
     def _l1_penalty(self, model):
-        """Compute L1 norm over all parameters for sparsity regularization."""
+        """
+        Compute the L1 penalty across all model parameters.
+
+        This is used to implement optional sparsity regularisation by adding
+        ``l1_lambda * _l1_penalty(model)`` to the loss during training.
+
+        Parameters
+        ----------
+        model : nn.Module
+            Model whose parameters will be penalised.
+
+        Returns
+        -------
+        torch.Tensor
+            Scalar tensor representing the sum of absolute values of all
+            parameters.
+        """
         return sum(p.abs().sum() for p in model.parameters())
 
     @abstractmethod
     def train(self, *args, **kwargs):
-        """Train a model. Must be implemented by subclasses."""
+        """
+        Train a model.
+
+        Subclasses must implement this method to define the optimisation loop.
+        The method should accept a model and training data, perform gradient
+        updates, and return the trained model along with any diagnostics
+        (e.g., loss curves, validation metrics).
+
+        Returns
+        -------
+        Any
+            Typically the trained model and optional training diagnostics.
+        """
         pass
 
 
 class PoissonTrainer(BaseTrainer):
-    """Trainer for single-cell Poisson neural networks.
+    """
+    Trainer for single-cell Poisson neural network models.
 
-    Implements standard epoch-based training with optional early stopping
-    monitored on a separate validation set. Loss is Poisson negative log
-    likelihood, and both L2 (via optimizer weight decay) and optional L1
-    penalties are supported.
+    This class implements a standard training loop for Poisson regression models,
+    including device management, batching, optimisation, and early stopping. It is
+    designed for models inheriting from ``BasePoissonModel`` and provides a unified
+    interface for fitting single-cell architectures such as MLPs, CNN/RNN
+    extractors, and transfer-learning variants.
+
+    Training is performed using Poisson negative log-likelihood loss, with L2
+    regularisation handled through optimizer weight decay and optional L1
+    regularisation applied manually. Early stopping monitors validation loss and
+    automatically restores the best-performing model state.
+
+    Parameters
+    ----------
+    lr : float, optional
+        Learning rate for the optimiser.
+    epochs : int, optional
+        Maximum number of training epochs.
+    weight_decay : float, optional
+        L2 regularisation strength passed to the optimiser.
+    l1_lambda : float, optional
+        Coefficient for optional L1 regularisation applied to model parameters.
+    batch_size : int or "auto", optional
+        Batch size for training. If ``"auto"``, the trainer selects full-batch
+        training for small datasets and mini-batch training for larger ones.
+    patience : int, optional
+        Number of epochs without validation improvement before early stopping.
+
+    Attributes
+    ----------
+    device : torch.device
+        Device on which training is performed, inherited from ``BaseTrainer``.
+    patience : int
+        Early stopping patience threshold.
+
+    Methods
+    -------
+    train(model, X_train, y_train, X_val, y_val)
+        Fit the model using training data and monitor validation loss for early
+        stopping. Returns the best model state and loss curves.
+
+    Notes
+    -----
+    This trainer is intended for single-cell models. Multi-cell or shared-extractor
+    architectures should use a corresponding multi-cell trainer subclass.
     """
 
     def __init__(
@@ -78,22 +212,36 @@ class PoissonTrainer(BaseTrainer):
         self.patience = patience
 
     def train(self, model, X_train, y_train, X_val, y_val):
-        """Fit ``model`` on training data, using ``X_val`` for early stopping.
+        """
+        Fit a Poisson model on training data, using a validation set for early stopping.
+
+        This method performs epoch-based optimisation with optional mini-batching.
+        After each epoch, the model is evaluated on the validation set, and the best
+        model state (lowest validation loss) is tracked. Training stops early if the
+        validation loss does not improve for ``patience`` consecutive epochs.
 
         Parameters
         ----------
         model : nn.Module
-            Poisson model implementing ``forward``.
+            Poisson model implementing ``forward`` and ``preprocess``.
         X_train, y_train : array-like
-            Training features and targets.
+            Training features and Poisson targets.
         X_val, y_val : array-like
-            Validation set used to track loss and drive early stopping.
+            Validation features and targets used to monitor early stopping.
 
         Returns
         -------
         tuple
-            ``(best_model, train_losses, val_losses)`` where ``best_model`` is
-            the model state with lowest validation loss.
+            ``(best_model, train_losses, val_losses)`` where:
+                - ``best_model`` is the model restored to its best validation state
+                - ``train_losses`` is a list of per-epoch training losses
+                - ``val_losses`` is a list of per-epoch validation losses
+
+        Notes
+        -----
+        The loss function is ``PoissonNLLLoss`` with ``log_input=False`` so the model
+        is expected to output positive rate predictions directly (e.g., via Softplus).
+        L1 regularisation is applied manually if ``l1_lambda > 0``.
         """
         # move model parameters to target device (CPU/GPU)
         model.to(self.device)
@@ -119,7 +267,7 @@ class PoissonTrainer(BaseTrainer):
 
         # define loss function appropriate for Poisson-distributed counts
         criterion = nn.PoissonNLLLoss(log_input=False)
-        # Adam optimizer with optional L2 weight decay for regularization
+        # Adam optimizer with optional L2 weight decay for regularisation
         optimiser = torch.optim.Adam(
             model.parameters(),
             lr=self.lr,
@@ -184,11 +332,56 @@ class PoissonTrainer(BaseTrainer):
 
 
 class TransferLearningTrainer(BaseTrainer):
-    """Trainer for transfer-learning models that share parameters across cells.
+    """
+    Trainer for multi-cell transfer-learning Poisson models.
 
-    During training the network is evaluated on each cell's data in turn and
-    gradients accumulate before the optimizer step.  The early stopping criterion
-    monitors the total loss summed over all cells.
+    This class implements a training loop for architectures that share parameters
+    across neurons, such as shared-extractor or shared-representation models. During
+    each epoch, the model is evaluated on every cell's dataset in turn, and the
+    resulting gradients accumulate before a single optimiser step is taken. This
+    ensures that shared parameters are updated using information from all cells.
+
+    Training uses Poisson negative log-likelihood loss, with L2 regularisation
+    handled through optimiser weight decay and optional L1 penalties applied
+    manually. Early stopping monitors the total loss summed across all cells and
+    restores the best-performing model state.
+
+    Parameters
+    ----------
+    lr : float, optional
+        Learning rate for the optimiser.
+    epochs : int, optional
+        Maximum number of training epochs.
+    weight_decay : float, optional
+        L2 regularisation strength passed to the optimiser.
+    l1_lambda : float, optional
+        Coefficient for optional L1 regularisation applied to model parameters.
+    batch_size : int or "auto", optional
+        Batch size for per-cell training. If ``"auto"``, the trainer selects
+        full-batch training for small cell-specific datasets and mini-batch
+        training for larger ones.
+    patience : int, optional
+        Number of epochs without improvement in total loss before early stopping.
+
+    Attributes
+    ----------
+    device : torch.device
+        Device on which training is performed, inherited from ``BaseTrainer``.
+    patience : int
+        Early stopping patience threshold.
+
+    Methods
+    -------
+    train(model, X_cells, Y_cells)
+        Fit the model using per-cell datasets, accumulating gradients across cells
+        before each optimiser step. Returns the best model state and loss history.
+
+    Notes
+    -----
+    This trainer is intended for models whose ``forward`` method accepts a cell
+    index (e.g., ``model(x, cell_idx)``). It supports any architecture that shares
+    parameters across neurons, including shared-extractor, shared-representation,
+    and hybrid transfer-learning models.
     """
 
     def __init__(
@@ -204,22 +397,41 @@ class TransferLearningTrainer(BaseTrainer):
         self.patience = patience
 
     def train(self, model, X_cells, Y_cells):
-        """Train a transfer-learning ``model`` using per-cell datasets.
+        """
+        Train a transfer-learning model using per-cell datasets.
+
+        This method performs epoch-based optimisation where, during each epoch, the
+        model is evaluated on every cell's dataset in turn. Gradients from all cells
+        accumulate before a single optimiser step is taken, ensuring that shared
+        parameters are updated using information from the entire population. The total
+        loss summed across all cells is used for early stopping, and the best model
+        state is restored at the end of training.
 
         Parameters
         ----------
         model : nn.Module
-            Should accept inputs ``(X, cell_index)`` in its forward.
+            Transfer-learning model whose ``forward`` method accepts inputs of the form
+            ``model(X, cell_index)``.
         X_cells : list of array-like
-            Feature arrays for each cell.
+            List of feature arrays, one per cell.
         Y_cells : list of array-like
-            Corresponding target arrays.
+            List of target arrays corresponding to ``X_cells``.
 
         Returns
         -------
         tuple
-            ``(best_model, train_losses)`` where ``train_losses`` contains the
-            summed loss at each epoch.
+            ``(best_model, train_losses)`` where:
+                - ``best_model`` is the model restored to its best validation state
+                according to total loss across all cells.
+                - ``train_losses`` is a list of per-epoch total losses (summed across
+                all cells and batches).
+
+        Notes
+        -----
+        Batch size is determined independently for each cell's dataset using the
+        trainer's batch-size heuristic. L1 regularisation is applied manually if
+        ``l1_lambda > 0``. This method is intended for models that share parameters
+        across cells and require gradient accumulation across multiple datasets.
         """
         model.to(self.device)
 
@@ -252,7 +464,7 @@ class TransferLearningTrainer(BaseTrainer):
             total_loss = 0.0
 
             # loop over each cell's dataset; gradients from each cell accumulate
-            # in the model parameters before the optimizer step at epoch end
+            # in the model parameters before the optimiser step at epoch end
             for ci, (Xc, Yc) in enumerate(zip(X_cells, Y_cells)):
                 # determine batch size for this cell's data
                 batch_size = self._get_batch_size(len(Xc))
@@ -268,7 +480,7 @@ class TransferLearningTrainer(BaseTrainer):
                     preds = model(xb, ci)  # forward pass including cell index
                     loss = criterion(preds, yb)  # compute loss for this batch
                     if self.l1_lambda > 0:
-                        # add sparsity regularization term, scaled by lambda
+                        # add sparsity regularisation term, scaled by lambda
                         loss = loss + self.l1_lambda * self._l1_penalty(model)
                     total_loss += loss
 
