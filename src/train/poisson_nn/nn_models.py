@@ -114,7 +114,7 @@ class BasePoissonModel(nn.Module, ABC):
         else:
             # Convert numpy → tensor and move to correct device
             if torch.is_tensor(X):
-                X_t = X.detach().clone().to(device=self.device, dtype=torch.float32)
+                X_t = X.to(self.device, dtype=torch.float32)
             else:
                 X_t = torch.tensor(X, dtype=torch.float32, device=self.device)
 
@@ -247,7 +247,7 @@ class BaseExtractor(nn.Module):
 
         # Convert numpy → tensor or clone existing tensor
         if torch.is_tensor(X):
-            X = X.detach().clone().to(device=device, dtype=torch.float32)
+            X = X.to(self.device, dtype=torch.float32)
         else:
             X = torch.tensor(X, dtype=torch.float32, device=device)
 
