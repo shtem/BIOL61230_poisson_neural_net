@@ -1,10 +1,14 @@
 import torch
+import optuna
 import itertools
 import numpy as np
 from sklearn.model_selection import KFold
 from src.train.evaluate import pseudo_r2
 from src.get_data import prepare_cellwise_datasets
 from src.train.poisson_nn.nn_training import TransferLearningTrainer
+
+# Add device handling at top
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def _expand_param_grid(param_grid):
@@ -209,76 +213,79 @@ def grid_search_per_cell(
         contains the full CV results keyed by frozen parameter tuples.
     """
 
-    # Expand model params
-    model_param_combos = _expand_param_grid(model_param_grid)
+    def objective(trial):
+        # Sample params
+        mp = {}
+        for k, v in model_param_grid.items():
+            mp[k] = trial.suggest_categorical(k, v)
+        tp = {}
+        if trainer_param_grid:
+            for k, v in trainer_param_grid.items():
+                if k == "l1_lambda":
+                    tp[k] = trial.suggest_float(
+                        k, min(v), max(v), log=False
+                    )  # Changed to log=False
+                else:
+                    tp[k] = trial.suggest_categorical(k, v)
 
-    # Expand trainer params (or use empty dict)
-    if trainer_param_grid is None:
-        trainer_param_combos = [{}]
-    else:
-        trainer_param_combos = _expand_param_grid(trainer_param_grid)
-
-    # Combine both parameter sets into a list of pairs
-    all_param_combos = []
-    for mp in model_param_combos:
-        for tp in trainer_param_combos:
-            all_param_combos.append((mp, tp))
-
-    all_scores = {}
-
-    # Evaluate each combination via cross-validation
-    for model_params, trainer_params in all_param_combos:
-
-        frozen = (
-            _freeze_params(model_params),
-            _freeze_params(trainer_params),
-        )
-
-        if verbose:
-            print("Evaluating combo", model_params, trainer_params)
-
-        # wrapper ignores kw because grid search handles parameters separately
         def _model_class_wrapper(**kw):
-            return model_class(**model_params)
+            return model_class(**mp)
 
         scores = cross_validate_model_per_cell(
             X,
             Y,
             cell_ids,
-            model_class=_model_class_wrapper,
-            model_kwargs={},
-            k_folds=k_folds,
-            scaler=scaler,
-            custom_train_fn=custom_train_fn,
-            trainer_params=trainer_params,
-            verbose=verbose,
+            _model_class_wrapper,
+            {},
+            k_folds,
+            scaler,
+            custom_train_fn,
+            tp,
+            verbose,
         )
 
-        all_scores[frozen] = scores
+        # Return mean across cells
+        return np.mean(list(scores.values()))
 
-    # Select best params/cv score for each cell separately
-    best_params = {}
+    study = optuna.create_study(direction="maximize")
+    study.optimize(objective, n_trials=50)  # Adjust n_trials as needed
+
+    best_params_optuna = study.best_params
+    model_params = {
+        k: v for k, v in best_params_optuna.items() if k in model_param_grid
+    }
+    trainer_params = {
+        k: v for k, v in best_params_optuna.items() if k in (trainer_param_grid or {})
+    }
+
+    # To keep API, set best_params for each cell to the global best
     unique_cells = np.unique(cell_ids)
-
+    best_params = {}
     for cell in unique_cells:
-        if verbose:
-            print(f"Selecting best params for cell {cell}")
-        best_score = -np.inf
-        best_combo = None
-
-        for frozen, cell_scores in all_scores.items():
-            score = cell_scores[cell]
-            if score > best_score:
-                best_score = score
-                best_combo = frozen
-
-        model_params = dict(best_combo[0])
-        trainer_params = dict(best_combo[1])
-
         best_params[cell] = {
             "model_params": model_params,
             "trainer_params": trainer_params,
         }
+
+    # For all_scores, run with best params to populate
+    frozen = (_freeze_params(model_params), _freeze_params(trainer_params))
+
+    def _model_class_wrapper(**kw):
+        return model_class(**model_params)
+
+    scores = cross_validate_model_per_cell(
+        X,
+        Y,
+        cell_ids,
+        _model_class_wrapper,
+        {},
+        k_folds,
+        scaler,
+        custom_train_fn,
+        trainer_params,
+        verbose,
+    )
+    all_scores = {frozen: scores}
 
     return {
         "best_params": best_params,
@@ -334,11 +341,6 @@ def grid_search_transfer_learning(
         Same structure as ``grid_search_per_cell``: best parameters and all
         observed scores.
     """
-    model_param_combos = _expand_param_grid(model_param_grid)
-    trainer_param_combos = _expand_param_grid(trainer_param_grid)
-
-    all_scores = {}
-
     unique_cells = np.unique(cell_ids)
     n_cells = len(unique_cells)
     n_features = X.shape[0]
@@ -350,98 +352,94 @@ def grid_search_transfer_learning(
     # score hyperparameter combinations, leaving a separate test set untouched
     # until final evaluation.
     Xtr, Ytr, Xv, Yv, _, _ = prepare_cellwise_datasets(
-        X,
-        Y,
-        cell_ids,
-        train_frac=0.7,
-        val_frac=0.15,
-        use_val=True,
+        X, Y, cell_ids, train_frac=0.7, val_frac=0.15, use_val=True
     )
-
-    # Optional scaling per cell: fit on train, apply to train+val
     if scaler is not None:
         for cell in unique_cells:
             sc = scaler()
             Xtr[cell] = sc.fit_transform(Xtr[cell])
             Xv[cell] = sc.transform(Xv[cell])
+    X_cells_train = [
+        torch.tensor(Xtr[cell], dtype=torch.float32).to(device) for cell in unique_cells
+    ]
+    Y_cells_train = [
+        torch.tensor(Ytr[cell], dtype=torch.float32).to(device) for cell in unique_cells
+    ]
+    X_cells_val = [
+        torch.tensor(Xv[cell], dtype=torch.float32).to(device) for cell in unique_cells
+    ]
+    Y_cells_val = Y_cells_val  # Keep NumPy
 
-    # Dict → list in fixed cell order
-    X_cells_train = [Xtr[cell] for cell in unique_cells]
-    Y_cells_train = [Ytr[cell] for cell in unique_cells]
-    X_cells_val = [Xv[cell] for cell in unique_cells]
-    Y_cells_val = [Yv[cell] for cell in unique_cells]
+    def objective(trial):
+        # Sample params
+        mp = {}
+        for k, v in model_param_grid.items():
+            if isinstance(v[0], tuple):
+                mp[k] = trial.suggest_categorical(k, v)
+            else:
+                mp[k] = trial.suggest_categorical(k, v)
+        tp = {}
+        if trainer_param_grid:
+            for k, v in trainer_param_grid.items():
+                if k == "l1_lambda":
+                    tp[k] = trial.suggest_float(
+                        k, min(v), max(v), log=False
+                    )  # Changed to log=False
+                else:
+                    tp[k] = trial.suggest_categorical(k, v)
 
-    # ------------------------------------------------------------
-    # Evaluate each combination
-    # ------------------------------------------------------------
-    for mp in model_param_combos:
-        for tp in trainer_param_combos:
+        # Train on the training split
+        model = model_class(n_features=n_features, n_cells=n_cells, **mp).to(device)
+        trainer = TransferLearningTrainer(**tp)
+        out = trainer.train(model, X_cells_train, Y_cells_train)
+        model = out[0] if isinstance(out, tuple) else out
 
-            frozen = (_freeze_params(mp), _freeze_params(tp))
+        # Evaluate on the validation split, cell-by-cell
+        # each head is scored separately so we can inspect per-cell
+        # performance later; this also allows robust aggregation.
+        cell_scores = {}
+        for ci, cell in enumerate(unique_cells):
+            model.eval()
+            with torch.no_grad():
+                y_pred = model(X_cells_val[ci], ci).cpu().numpy()
+            score = pseudo_r2(Y_cells_val[ci], y_pred)
+            cell_scores[cell] = score
 
-            if verbose:
-                print("Evaluating TL combo", mp, tp)
+        # Free memory
+        del model
+        torch.cuda.empty_cache()
 
-            # Build model + trainer instances
-            model = model_class(n_features=n_features, n_cells=n_cells, **mp)
-            trainer = TransferLearningTrainer(**tp)
+        scores_arr = np.array(list(cell_scores.values()))
+        agg = np.median(scores_arr) if agg_method == "median" else np.mean(scores_arr)
+        return agg
 
-            # Train on the training split
-            out = trainer.train(model, X_cells_train, Y_cells_train)
-            model = out[0] if isinstance(out, tuple) else out
+    study = optuna.create_study(direction="maximize")
+    study.optimize(objective, n_trials=50)
 
-            # Evaluate on the validation split, cell-by-cell
-            # each head is scored separately so we can inspect per-cell
-            # performance later; this also allows robust aggregation.
-            cell_scores = {}
-            for ci, cell in enumerate(unique_cells):
-                Xc_val = torch.tensor(X_cells_val[ci], dtype=torch.float32)
-                y_true = Y_cells_val[ci]
+    best_params_optuna = study.best_params
+    best_model_params = {
+        k: v for k, v in best_params_optuna.items() if k in model_param_grid
+    }
+    best_trainer_params = {
+        k: v for k, v in best_params_optuna.items() if k in trainer_param_grid
+    }
 
-                model.eval()
-                with torch.no_grad():
-                    y_pred = model(Xc_val, ci).cpu().numpy()
-
-                score = pseudo_r2(y_true, y_pred)
-                cell_scores[cell] = score
-
-            all_scores[frozen] = cell_scores
-            if verbose:
-                scores_arr = np.array(list(cell_scores.values()))
-                print(" -> per-cell median", np.median(scores_arr))
-                print(" -> per-cell mean", np.mean(scores_arr))
-
-    # ------------------------------------------------------------
-    # Select best params based on aggregate across cells
-    # (here: median pseudo-R² for robustness to outliers)
-    # Multiple aggregation strategies could be used; median is less sensitive
-    # to a few poorly-predicted cells than a simple mean.
-    # ------------------------------------------------------------
-    # ensure the aggregation method is recognised
-    if agg_method not in ("median", "mean"):
-        raise ValueError(
-            f"Unknown agg_method '{agg_method}'; must be 'median' or 'mean'"
-        )
-
-    best_combo = None
-    best_agg_score = -np.inf
-
-    for frozen, cell_scores in all_scores.items():
-        scores = np.array(list(cell_scores.values()))
-        if agg_method == "median":
-            agg = np.median(scores)
-        else:  # mean
-            agg = np.mean(scores)
-
-        if verbose:
-            print(f" -> combo {frozen} {agg_method} aggregate =", agg)
-
-        if agg > best_agg_score:
-            best_agg_score = agg
-            best_combo = frozen
-
-    best_model_params = dict(best_combo[0])
-    best_trainer_params = dict(best_combo[1])
+    # Populate all_scores by re-running best params
+    frozen = (_freeze_params(best_model_params), _freeze_params(best_trainer_params))
+    model = model_class(n_features=n_features, n_cells=n_cells, **best_model_params).to(
+        device
+    )
+    trainer = TransferLearningTrainer(**best_trainer_params)
+    out = trainer.train(model, X_cells_train, Y_cells_train)
+    model = out[0] if isinstance(out, tuple) else out
+    cell_scores = {}
+    for ci, cell in enumerate(unique_cells):
+        model.eval()
+        with torch.no_grad():
+            y_pred = model(X_cells_val[ci], ci).cpu().numpy()
+        score = pseudo_r2(Y_cells_val[ci], y_pred)
+        cell_scores[cell] = score
+    all_scores = {frozen: cell_scores}
 
     return {
         "best_params": {

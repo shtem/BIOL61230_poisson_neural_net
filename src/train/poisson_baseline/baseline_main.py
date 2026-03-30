@@ -1,9 +1,13 @@
+import torch
 import numpy as np
 from xgboost import XGBRegressor
 from sklearn.linear_model import PoissonRegressor
 from src.train.training import fit_model_per_cell
 from src.train.hyperparam_search import grid_search_per_cell
 from src.get_data import prepare_cellwise_datasets, flatten_cellwise_data
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+tree_method = "gpu_hist" if device.type == "cuda" else "hist"
 
 
 def fit_poisson_glm(
@@ -208,7 +212,7 @@ def fit_poisson_xgboost(
             n_estimators=300,
             subsample=0.8,
             colsample_bytree=0.8,
-            tree_method="hist",
+            tree_method=tree_method,
         )
         # allow caller to override defaults
         default_params.update(kwargs)
@@ -267,7 +271,7 @@ def fit_poisson_xgboost(
                 objective="count:poisson",
                 subsample=0.8,
                 colsample_bytree=0.8,
-                tree_method="hist",
+                tree_method=tree_method,
             )
         )
 

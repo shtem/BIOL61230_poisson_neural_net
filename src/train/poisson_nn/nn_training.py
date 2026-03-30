@@ -296,7 +296,9 @@ class PoissonTrainer(BaseTrainer):
                 optimiser.zero_grad()
 
                 # autocast for mixed precision
-                with torch.amp.autocast(enabled=(self.device.type == "cuda")):
+                with torch.amp.autocast(
+                    device_type="cuda", enabled=(self.device.type == "cuda")
+                ):
                     preds = model(xb)
                     loss = criterion(preds, yb)
                     if self.l1_lambda > 0:
@@ -493,7 +495,9 @@ class TransferLearningTrainer(BaseTrainer):
                 for xb, yb in loader:
 
                     # autocast for mixed precision
-                    with torch.amp.autocast(enabled=(self.device.type == "cuda")):
+                    with torch.amp.autocast(
+                        device_type="cuda", enabled=(self.device.type == "cuda")
+                    ):
                         preds = model(xb, ci)
                         loss = criterion(preds, yb)
                         if self.l1_lambda > 0:

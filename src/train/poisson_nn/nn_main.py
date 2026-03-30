@@ -16,6 +16,8 @@ from src.train.hyperparam_search import (
     grid_search_transfer_learning,
 )
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 
 # ------------------------------------------------------------
 # Unified training wrapper (works for both trainers)
@@ -280,6 +282,7 @@ def fit_poisson_nn(
         # training wrapper that ignores grid search args
         def train_fn(model, Xtr_c, ytr_c, Xv_c, yv_c, **tp):
             trainer = PoissonTrainer(**trainer_params)
+            model = model.to(device)  # Move to GPU if available
             return run_trainer(trainer, model, Xtr_c, ytr_c, Xv_c, yv_c)
 
         # fit each cell separately using fit_model_per_cell helper
@@ -346,6 +349,7 @@ def fit_poisson_nn(
 
     def gs_train_fn(model, Xtr_c, ytr_c, Xv_c, yv_c, **tp):
         trainer = PoissonTrainer(**tp)
+        model = model.to(device)
         return run_trainer(trainer, model, Xtr_c, ytr_c, Xv_c, yv_c)
 
     # perform per-cell cross-validated grid search
@@ -381,6 +385,7 @@ def fit_poisson_nn(
 
         def final_train_fn(model, Xtr_c, ytr_c, Xv_c, yv_c):
             trainer = PoissonTrainer(**tp)
+            model = model.to(device)
             return run_trainer(trainer, model, Xtr_c, ytr_c, Xv_c, yv_c)
 
         # refit with optimal parameters for each cell and store only that cell's
@@ -584,12 +589,13 @@ def fit_poisson_nn_transfer_learning(
 
         model = make_model(model_type, n_features, n_cells, **model_params)
         trainer = TransferLearningTrainer(**trainer_params)
+        model = model.to(device)
         model = run_trainer(trainer, model, X_cells_train, Y_cells_train)
 
         # Evaluate on test set
         results = {}
         for ci, cell in enumerate(unique_cells):
-            Xc_test = torch.tensor(X_cells_test[ci], dtype=torch.float32)
+            Xc_test = torch.tensor(X_cells_test[ci], dtype=torch.float32).to(device)
             model.eval()
             with torch.no_grad():
                 y_pred = model(Xc_test, ci).cpu().numpy()
@@ -650,12 +656,13 @@ def fit_poisson_nn_transfer_learning(
 
     model = make_model(model_type, n_features, n_cells, **best_mp)
     trainer = TransferLearningTrainer(**best_tp)
+    model = model.to(device)
     model = run_trainer(trainer, model, X_cells_train, Y_cells_train)
 
     # Evaluate on test set
     results = {}
     for ci, cell in enumerate(unique_cells):
-        Xc_test = torch.tensor(X_cells_test[ci], dtype=torch.float32)
+        Xc_test = torch.tensor(X_cells_test[ci], dtype=torch.float32).to(device)
         model.eval()
         with torch.no_grad():
             y_pred = model(Xc_test, ci).cpu().numpy()
