@@ -1,3 +1,19 @@
+import torch
+import numpy as np
+
+
+def _to_tensor(x, device, dtype=torch.float32):
+    """
+    Convert input to tensor on device, handling arrays and existing tensors.
+    """
+    if isinstance(x, torch.Tensor):
+        return x.detach().clone().to(dtype=dtype, device=device)
+    elif isinstance(x, np.ndarray):
+        return torch.tensor(x, dtype=dtype, device=device)
+    else:
+        raise TypeError(f"Unsupported type: {type(x)}")
+
+
 def summarise_model_results(results, model_name="Model"):
     """
     Print a human-readable summary of per-cell evaluation metrics.

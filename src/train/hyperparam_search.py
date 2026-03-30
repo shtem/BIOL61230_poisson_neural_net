@@ -3,6 +3,7 @@ import optuna
 import itertools
 import numpy as np
 from sklearn.model_selection import KFold
+from src.train.utils import _to_tensor
 from src.train.evaluate import pseudo_r2
 from src.get_data import prepare_cellwise_datasets
 from src.train.poisson_nn.nn_training import TransferLearningTrainer
@@ -359,15 +360,9 @@ def grid_search_transfer_learning(
             sc = scaler()
             Xtr[cell] = sc.fit_transform(Xtr[cell])
             Xv[cell] = sc.transform(Xv[cell])
-    X_cells_train = [
-        torch.tensor(Xtr[cell], dtype=torch.float32).to(device) for cell in unique_cells
-    ]
-    Y_cells_train = [
-        torch.tensor(Ytr[cell], dtype=torch.float32).to(device) for cell in unique_cells
-    ]
-    X_cells_val = [
-        torch.tensor(Xv[cell], dtype=torch.float32).to(device) for cell in unique_cells
-    ]
+    X_cells_train = [_to_tensor(Xtr[cell], device) for cell in unique_cells]
+    Y_cells_train = [_to_tensor(Ytr[cell], device) for cell in unique_cells]
+    X_cells_val = [_to_tensor(Xv[cell], device) for cell in unique_cells]
     Y_cells_val = Y_cells_val  # Keep NumPy
 
     def objective(trial):

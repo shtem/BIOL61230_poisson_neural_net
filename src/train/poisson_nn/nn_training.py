@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from abc import ABC, abstractmethod
 from torch.utils.data import DataLoader, TensorDataset
+from src.train.utils import _to_tensor
 
 
 class BaseTrainer(ABC):
@@ -247,10 +248,10 @@ class PoissonTrainer(BaseTrainer):
         model.to(self.device)
 
         # convert inputs to tensors and transfer to chosen device
-        X_train = torch.tensor(X_train, dtype=torch.float32, device=self.device)
-        y_train = torch.tensor(y_train, dtype=torch.float32, device=self.device)
-        X_val = torch.tensor(X_val, dtype=torch.float32, device=self.device)
-        y_val = torch.tensor(y_val, dtype=torch.float32, device=self.device)
+        X_train = _to_tensor(X_train, self.device)
+        y_train = _to_tensor(y_train, self.device)
+        X_val = _to_tensor(X_val, self.device)
+        y_val = _to_tensor(y_val, self.device)
 
         # determine minibatch size
         batch_size = self._get_batch_size(len(X_train))
@@ -263,7 +264,7 @@ class PoissonTrainer(BaseTrainer):
                 batch_size=batch_size,
                 shuffle=True,
                 num_workers=4,
-                pin_memory=True,
+                pin_memory=self.device.type == "cuda",
             )
 
         # loss + optimiser
@@ -444,12 +445,8 @@ class TransferLearningTrainer(BaseTrainer):
         model.to(self.device)
 
         # convert lists of arrays to tensors on device
-        X_cells = [
-            torch.tensor(x, dtype=torch.float32, device=self.device) for x in X_cells
-        ]
-        Y_cells = [
-            torch.tensor(y, dtype=torch.float32, device=self.device) for y in Y_cells
-        ]
+        X_cells = [_to_tensor(x, self.device) for x in X_cells]
+        Y_cells = [_to_tensor(y, self.device) for y in Y_cells]
 
         criterion = nn.PoissonNLLLoss(log_input=False)
         optimiser = torch.optim.Adam(
@@ -488,7 +485,7 @@ class TransferLearningTrainer(BaseTrainer):
                         batch_size=batch_size,
                         shuffle=True,
                         num_workers=4,
-                        pin_memory=True,
+                        pin_memory=self.device.type == "cuda",
                     )
 
                 # iterate through minibatches for this cell

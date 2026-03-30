@@ -8,6 +8,7 @@ from src.train.poisson_nn.nn_models import (
     SharedNonlinearHeadsPoissonNN,
 )
 from src.train.poisson_nn.nn_training import PoissonTrainer, TransferLearningTrainer
+from src.train.utils import _to_tensor
 from src.train.training import fit_model_per_cell
 from src.train.evaluate import evaluate_poisson_model
 from src.get_data import prepare_cellwise_datasets, flatten_cellwise_data
@@ -378,10 +379,11 @@ def fit_poisson_nn(
     # Fit final models using best hyperparameters
     # ------------------------------------------------------------
     final_results = {}
-
+    print("Refitting final models with best hyperparameters...")
     for cell in np.unique(cell_ids):
         mp = best_params[cell]["model_params"]
         tp = best_params[cell]["trainer_params"]
+        tp["epochs"] = max(10, epochs // 3)  # Override epochs for final training
 
         def final_train_fn(model, Xtr_c, ytr_c, Xv_c, yv_c):
             trainer = PoissonTrainer(**tp)
@@ -595,7 +597,7 @@ def fit_poisson_nn_transfer_learning(
         # Evaluate on test set
         results = {}
         for ci, cell in enumerate(unique_cells):
-            Xc_test = torch.tensor(X_cells_test[ci], dtype=torch.float32).to(device)
+            Xc_test = _to_tensor(X_cells_test[ci], device)
             model.eval()
             with torch.no_grad():
                 y_pred = model(Xc_test, ci).cpu().numpy()
@@ -662,7 +664,7 @@ def fit_poisson_nn_transfer_learning(
     # Evaluate on test set
     results = {}
     for ci, cell in enumerate(unique_cells):
-        Xc_test = torch.tensor(X_cells_test[ci], dtype=torch.float32).to(device)
+        Xc_test = _to_tensor(X_cells_test[ci], device)
         model.eval()
         with torch.no_grad():
             y_pred = model(Xc_test, ci).cpu().numpy()

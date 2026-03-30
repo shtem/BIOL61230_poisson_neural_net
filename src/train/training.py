@@ -1,6 +1,5 @@
 import torch
 import inspect
-import numpy as np
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -13,8 +12,6 @@ from src.visualisation import (
 from src.train.utils import summarise_model_results
 from src.train.io import save_model, save_plot, load_model
 from src.train.evaluate import evaluate_poisson_model
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def fit_model_per_cell(
@@ -73,10 +70,10 @@ def fit_model_per_cell(
         Dictionary keyed by cell id.  Each value is itself a dictionary
         containing:
 
-        * ``model`` – the fitted estimator
-        * ``scaler`` – the fitted scaler (or ``None``)
-        * ``train``/``val``/``test`` – evaluation metrics dictionaries
-        * ``y_pred_*`` / ``y_*`` – predictions and true responses
+        * ``model`` - the fitted estimator
+        * ``scaler`` - the fitted scaler (or ``None``)
+        * ``train``/``val``/``test`` - evaluation metrics dictionaries
+        * ``y_pred_*`` / ``y_*`` - predictions and true responses
         * optionally ``train_losses``/``val_losses`` if present on the model
     """
     results = {}
@@ -100,53 +97,14 @@ def fit_model_per_cell(
 
         model = model_class(**(model_kwargs or {}))
 
-        # GPU optimization: Move PyTorch models to device and convert data to tensors
-        if isinstance(model, torch.nn.Module):
-            model.to(device)
-            # Convert data to tensors on device if needed (e.g., for NN)
-            Xtr_s = (
-                torch.tensor(Xtr_s, dtype=torch.float32).to(device)
-                if isinstance(Xtr_s, np.ndarray)
-                else Xtr_s
-            )
-            ytr = (
-                torch.tensor(ytr, dtype=torch.float32).to(device)
-                if isinstance(ytr, np.ndarray)
-                else ytr
-            )
-            if Xv_s is not None:
-                Xv_s = (
-                    torch.tensor(Xv_s, dtype=torch.float32).to(device)
-                    if isinstance(Xv_s, np.ndarray)
-                    else Xv_s
-                )
-            Xte_s = (
-                torch.tensor(Xte_s, dtype=torch.float32).to(device)
-                if isinstance(Xte_s, np.ndarray)
-                else Xte_s
-            )
-
         if custom_train_fn is None:
             model.fit(Xtr_s, ytr)
         else:
             model = custom_train_fn(model, Xtr_s, ytr, Xv_s, yv)
 
-        # Predictions: Move back to CPU for evaluation if PyTorch model
-        y_pred_train = (
-            model.predict(Xtr_s).cpu().numpy()
-            if isinstance(model, torch.nn.Module)
-            else model.predict(Xtr_s)
-        )
-        y_pred_val = (
-            model.predict(Xv_s).cpu().numpy()
-            if Xv_s is not None and isinstance(model, torch.nn.Module)
-            else (model.predict(Xv_s) if Xv_s is not None else None)
-        )
-        y_pred_test = (
-            model.predict(Xte_s).cpu().numpy()
-            if isinstance(model, torch.nn.Module)
-            else model.predict(Xte_s)
-        )
+        y_pred_train = model.predict(Xtr_s)
+        y_pred_val = model.predict(Xv_s) if Xv_s is not None else None
+        y_pred_test = model.predict(Xte_s)
 
         train_eval = evaluate_poisson_model(ytr, y_pred_train)
         val_eval = evaluate_poisson_model(yv, y_pred_val) if yv is not None else None

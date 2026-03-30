@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from abc import ABC, abstractmethod
+from src.train.utils import _to_tensor
 
 # ------------------------------------------------------------------
 # Base classes and utilities
@@ -113,10 +114,7 @@ class BasePoissonModel(nn.Module, ABC):
             X_t = X
         else:
             # Convert numpy → tensor and move to correct device
-            if torch.is_tensor(X):
-                X_t = X.to(self.device, dtype=torch.float32)
-            else:
-                X_t = torch.tensor(X, dtype=torch.float32, device=self.device)
+            X_t = _to_tensor(X, self.device)
 
         # Reshape based on declared input type
         if self.input_type == "flat":
@@ -246,10 +244,7 @@ class BaseExtractor(nn.Module):
         device = X.device if torch.is_tensor(X) else "cpu"
 
         # Convert numpy → tensor or clone existing tensor
-        if torch.is_tensor(X):
-            X = X.to(self.device, dtype=torch.float32)
-        else:
-            X = torch.tensor(X, dtype=torch.float32, device=device)
+        X = _to_tensor(X, device)
 
         # Sequence extractors expect (batch, features, 1)
         if self.input_type == "sequence":
