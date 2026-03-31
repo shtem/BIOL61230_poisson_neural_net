@@ -253,21 +253,18 @@ class PoissonTrainer(BaseTrainer):
         X_val = _to_tensor(X_val, self.device)
         y_val = _to_tensor(y_val, self.device)
 
-        # determine minibatch size
+        # determine minibatch size from heuristic or user override
         batch_size = self._get_batch_size(len(X_train))
         if batch_size is None:
-            loader = [(X_train, y_train)]
+            # for small datasets we perform full-batch gradient descent (one
+            # weight update per epoch) for stability and simplicity
+            train_loader = [(X_train, y_train)]
         else:
+            # DataLoader handles shuffling and batching
             ds = TensorDataset(X_train, y_train)
-            loader = DataLoader(
-                ds,
-                batch_size=batch_size,
-                shuffle=True,
-                num_workers=0,  # set to 0 for better compatibility across platforms
-                pin_memory=self.device.type == "cuda",
-            )
+            train_loader = DataLoader(ds, batch_size=batch_size, shuffle=True)
 
-        # loss + optimiser
+        # define loss function appropriate for Poisson-distributed counts
         criterion = nn.PoissonNLLLoss(log_input=False)
         # Adam optimizer with optional L2 weight decay for regularisation
         optimiser = torch.optim.Adam(
@@ -276,9 +273,8 @@ class PoissonTrainer(BaseTrainer):
             weight_decay=self.weight_decay,
         )
 
-        # mixed precision scaler
-        scaler = torch.amp.GradScaler(enabled=(self.device.type == "cuda"))
-
+        # bookkeeping for early stopping; track best validation loss seen so
+        # far and corresponding model weights
         best_val = float("inf")
         best_state = None
         patience_counter = 0
@@ -290,32 +286,26 @@ class PoissonTrainer(BaseTrainer):
         # training set (possibly split into minibatches) and then evaluates on
         # the validation set
         for _ in range(self.epochs):
-            model.train()
+            model.train()  # set dropout/batchnorm to training mode if present
             epoch_loss = 0.0
 
-            for xb, yb in loader:
-                optimiser.zero_grad()
+            # iterate through minibatches
+            for xb, yb in train_loader:
+                optimiser.zero_grad()  # clear accumulated gradients
+                preds = model(xb)  # forward pass: compute model outputs
+                loss = criterion(preds, yb)  # compute Poisson NLL loss
+                if self.l1_lambda > 0:
+                    # include L1 penalty on weights if requested, scaled by lambda
+                    loss = loss + self.l1_lambda * self._l1_penalty(model)
+                loss.backward()  # backpropagate gradients
+                optimiser.step()  # update weights using optimizer
+                epoch_loss += loss.item()  # accumulate scalar loss
 
-                # autocast for mixed precision
-                with torch.amp.autocast(
-                    device_type="cuda", enabled=(self.device.type == "cuda")
-                ):
-                    preds = model(xb)
-                    loss = criterion(preds, yb)
-                    if self.l1_lambda > 0:
-                        loss = loss + self.l1_lambda * self._l1_penalty(model)
-
-                # scaled backward + step
-                scaler.scale(loss).backward()
-                scaler.step(optimiser)
-                scaler.update()
-
-                epoch_loss += loss.item()
-
-            epoch_loss /= len(loader)
+            # record average training loss for this epoch
+            epoch_loss /= len(train_loader)
             train_losses.append(epoch_loss)
 
-            # validation (no AMP needed)
+            # evaluate on validation set without tracking gradients
             model.eval()
             with torch.no_grad():
                 val_preds = model(X_val)
@@ -323,7 +313,7 @@ class PoissonTrainer(BaseTrainer):
 
             val_losses.append(val_loss)
 
-            # early stopping
+            # early stopping logic: keep best model by validation loss
             if val_loss < best_val:
                 best_val = val_loss
                 best_state = model.state_dict()
@@ -455,9 +445,6 @@ class TransferLearningTrainer(BaseTrainer):
             weight_decay=self.weight_decay,
         )
 
-        # mixed precision scaler
-        scaler = torch.amp.GradScaler(enabled=(self.device.type == "cuda"))
-
         train_losses = []
         best_loss = float("inf")
         best_state = None
@@ -471,46 +458,35 @@ class TransferLearningTrainer(BaseTrainer):
 
             total_loss = 0.0
 
-            # loop over each cell's dataset
+            # loop over each cell's dataset; gradients from each cell accumulate
+            # in the model parameters before the optimiser step at epoch end
             for ci, (Xc, Yc) in enumerate(zip(X_cells, Y_cells)):
-
+                # determine batch size for this cell's data
                 batch_size = self._get_batch_size(len(Xc))
                 if batch_size is None:
                     # full batch for small cell-specific dataset
                     loader = [(Xc, Yc)]
                 else:
                     ds = TensorDataset(Xc, Yc)
-                    loader = DataLoader(
-                        ds,
-                        batch_size=batch_size,
-                        shuffle=True,
-                        num_workers=0,
-                        pin_memory=self.device.type == "cuda",
-                    )
+                    loader = DataLoader(ds, batch_size=batch_size, shuffle=True)
 
                 # iterate through minibatches for this cell
                 for xb, yb in loader:
-
-                    # autocast for mixed precision
-                    with torch.amp.autocast(
-                        device_type="cuda", enabled=(self.device.type == "cuda")
-                    ):
-                        preds = model(xb, ci)
-                        loss = criterion(preds, yb)
-                        if self.l1_lambda > 0:
-                            loss = loss + self.l1_lambda * self._l1_penalty(model)
-
-                    # accumulate loss across cells
+                    preds = model(xb, ci)  # forward pass including cell index
+                    loss = criterion(preds, yb)  # compute loss for this batch
+                    if self.l1_lambda > 0:
+                        # add sparsity regularisation term, scaled by lambda
+                        loss = loss + self.l1_lambda * self._l1_penalty(model)
                     total_loss += loss
 
-            # scaled backward + step (after all cells)
-            scaler.scale(total_loss).backward()
-            scaler.step(optimiser)
-            scaler.update()
+            # after accumulating loss over all cells and batches, backpropagate
+            total_loss.backward()
+            optimiser.step()  # update shared parameters
 
+            # record the combined loss (scalar) for the epoch
             train_losses.append(total_loss.item())
 
-            # early stopping
+            # early stopping check based on total loss history
             if total_loss.item() < best_loss:
                 best_loss = total_loss.item()
                 best_state = model.state_dict()

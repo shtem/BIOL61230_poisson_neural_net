@@ -389,7 +389,7 @@ def fit_poisson_nn(
         start = time.time()
         mp = best_params[cell]["model_params"]
         tp = best_params[cell]["trainer_params"]
-        tp["epochs"] = max(10, epochs // 3)  # Override epochs for final training
+        # tp["epochs"] = max(10, epochs // 3)  # Override epochs for final training
 
         def final_train_fn(model, Xtr_c, ytr_c, Xv_c, yv_c):
             trainer = PoissonTrainer(**tp)

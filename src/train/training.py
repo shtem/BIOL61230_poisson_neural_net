@@ -129,11 +129,6 @@ def fit_model_per_cell(
         if hasattr(model, "val_losses"):
             results[cell]["val_losses"] = model.val_losses
 
-        # Free GPU memory if PyTorch model
-        if isinstance(model, torch.nn.Module):
-            del model
-            torch.cuda.empty_cache()
-
     return results
 
 
