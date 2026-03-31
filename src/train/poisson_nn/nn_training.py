@@ -263,7 +263,7 @@ class PoissonTrainer(BaseTrainer):
                 ds,
                 batch_size=batch_size,
                 shuffle=True,
-                num_workers=4,
+                num_workers=0,  # set to 0 for better compatibility across platforms
                 pin_memory=self.device.type == "cuda",
             )
 
@@ -484,7 +484,7 @@ class TransferLearningTrainer(BaseTrainer):
                         ds,
                         batch_size=batch_size,
                         shuffle=True,
-                        num_workers=4,
+                        num_workers=0,
                         pin_memory=self.device.type == "cuda",
                     )
 

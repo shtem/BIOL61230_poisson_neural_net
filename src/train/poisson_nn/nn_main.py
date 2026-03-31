@@ -1,3 +1,5 @@
+import time
+
 import torch
 import torch.nn as nn
 import numpy as np
@@ -379,8 +381,12 @@ def fit_poisson_nn(
     # Fit final models using best hyperparameters
     # ------------------------------------------------------------
     final_results = {}
-    print("Refitting final models with best hyperparameters...")
-    for cell in np.unique(cell_ids):
+    unique_cells = np.unique(cell_ids)
+    print(
+        f"Refitting final models with best hyperparameters for a total of {len(unique_cells)} cells..."
+    )
+    for cell in unique_cells:
+        start = time.time()
         mp = best_params[cell]["model_params"]
         tp = best_params[cell]["trainer_params"]
         tp["epochs"] = max(10, epochs // 3)  # Override epochs for final training
@@ -404,6 +410,8 @@ def fit_poisson_nn(
             scaler=scaler,
             custom_train_fn=final_train_fn,
         )[cell]
+
+        print(f"Cell {cell} refit took {time.time() - start:.2f}s")
 
     # after building final_results, optionally print summary for first cell
     if verbose and final_results:

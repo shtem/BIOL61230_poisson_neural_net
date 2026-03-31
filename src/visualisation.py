@@ -24,6 +24,7 @@ def _set_journal_style():
             "xtick.labelsize": 10,
             "ytick.labelsize": 10,
             "lines.linewidth": 1.8,
+            "font.family": "DejaVu Sans",
         }
     )
 
