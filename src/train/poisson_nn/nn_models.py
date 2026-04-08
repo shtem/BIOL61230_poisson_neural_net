@@ -263,58 +263,85 @@ class CNNExtractor(BaseExtractor):
 
     This extractor treats the input feature vector as a short sequence of length
     ``n_features`` with a single channel, enabling convolutional filters to learn
-    local patterns or interactions between neighbouring features. The module
-    consists of a configurable stack of ``Conv1d → ReLU → BatchNorm1d →
-    Dropout`` blocks, followed by global average pooling across the sequence
-    dimension. A small adapter MLP refines the pooled embedding to improve
-    transfer-learning stability.
+    local patterns or interactions between neighbouring features. The depth and
+    width of the convolutional stack are controlled by ``hidden_channels``, which
+    may be either:
 
-    The final output is a fixed-dimensional embedding of size ``channels``,
-    suitable for use as the shared representation in multi-cell Poisson models
-    or as the input to a per-cell prediction head.
+    - an integer (e.g. ``32``), producing a single Conv1d block, or
+    - a sequence of integers (e.g. ``(64, 32)``), producing a multi-layer stack
+    where each entry specifies the number of output channels for that layer.
+
+    Each convolutional block consists of:
+
+        Conv1d → ReLU → BatchNorm1d → Dropout
+
+    After the convolutional stack, global average pooling collapses the sequence
+    dimension, yielding a fixed-dimensional embedding. A small adapter MLP is then
+    applied to stabilise optimisation and improve transfer-learning performance.
+
+    The final output is a shared embedding of dimension ``hidden_channels[-1]``,
+    suitable for use in multi-cell Poisson models or as input to per-cell heads.
 
     Parameters
     ----------
     n_features : int
         Number of input features before sequence reshaping.
-    channels : int, optional
-        Number of convolutional filters in each layer and the dimensionality of
-        the final embedding.
+    hidden_channels : int or sequence of int
+        Channel sizes for each convolutional block. If an integer is provided,
+        a single block is constructed. If a list/tuple is provided, one block is
+        created per entry.
     kernel : int, optional
-        Width of the convolutional kernel.
-    num_layers : int, optional
-        Number of convolutional blocks to apply.
+        Width of the convolutional kernel. Default is 3.
+    dropout : float, optional
+        Dropout probability applied after each convolutional block. Default is 0.1.
 
     Attributes
     ----------
     out_dim : int
-        Dimensionality of the output embedding (equal to ``channels``).
+        Dimensionality of the output embedding (equal to the last entry of
+        ``hidden_channels``).
     conv : nn.Sequential
         Stack of convolutional processing layers.
     adapter : nn.Sequential
-        Small MLP applied after global pooling to stabilise training.
+        Small MLP applied after global pooling to refine the embedding.
 
     Notes
     -----
-    Inputs are reshaped by ``BaseExtractor`` to ``(batch, features, 1)`` and
-    then transposed to ``(batch, 1, features)`` before convolution.
+    Inputs are reshaped by ``BaseExtractor`` to ``(batch, features, 1)`` and then
+    transposed to ``(batch, 1, features)`` before convolution.
     """
 
-    def __init__(self, n_features, channels=16, kernel=3, num_layers=2):
+    def __init__(self, n_features, hidden_channels, kernel=3, dropout=0.1):
         super().__init__(input_type="sequence")
+
+        # Allow int or tuple/list
+        if isinstance(hidden_channels, int):
+            hidden_channels = (hidden_channels,)
+        self.hidden_channels = tuple(hidden_channels)
 
         layers = []
         in_channels = 1
 
-        for _ in range(num_layers):
-            layers.append(nn.Conv1d(in_channels, channels, kernel, padding=kernel // 2))
+        for out_channels in self.hidden_channels:
+            layers.append(
+                nn.Conv1d(
+                    in_channels,
+                    out_channels,
+                    kernel_size=kernel,
+                    padding=kernel // 2,
+                )
+            )
             layers.append(nn.ReLU())
-            layers.append(nn.BatchNorm1d(channels))
-            layers.append(nn.Dropout(0.1))
-            in_channels = channels
+            layers.append(nn.BatchNorm1d(out_channels))
+            layers.append(nn.Dropout(dropout))
+            in_channels = out_channels
 
         self.conv = nn.Sequential(*layers)
-        self.out_dim = channels  # after global pooling
+
+        # Output dimension is the last channel count
+        self.out_dim = self.hidden_channels[-1]
+
+        # Optional adapter MLP (keeps things stable for TL)
         self.adapter = nn.Sequential(
             nn.Linear(self.out_dim, self.out_dim),
             nn.ReLU(),
@@ -322,10 +349,10 @@ class CNNExtractor(BaseExtractor):
 
     def forward(self, X):
         X = self.preprocess(X)  # (batch, features, 1)
-        X = X.transpose(1, 2)  # → (batch, 1, features)
-        h = self.conv(X)  # (batch, channels, features)
-        h = h.mean(dim=2)  # (batch, channels)
-        h = self.adapter(h)  # (batch, channels)
+        X = X.transpose(1, 2)  # (batch, 1, features)
+        h = self.conv(X)  # (batch, C, features)
+        h = h.mean(dim=2)  # global average pooling → (batch, C)
+        h = self.adapter(h)  # (batch, C)
         return h
 
 
@@ -334,60 +361,88 @@ class RNNExtractor(BaseExtractor):
     Gated recurrent feature extractor for Poisson neural networks.
 
     This extractor interprets the input feature vector as a sequence of length
-    ``n_features`` with a single feature channel and processes it using a GRU
-    (Gated Recurrent Unit). The recurrent architecture allows the model to learn
-    ordered or context-dependent relationships between features, which can be
-    beneficial when the feature set has an implicit structure.
+    ``n_features`` with a single feature channel and processes it using a stack of
+    GRU (Gated Recurrent Unit) layers. The depth and width of the recurrent stack
+    are controlled by ``hidden_sizes``, which may be either:
 
-    The GRU produces a hidden state at each sequence position; the final hidden
-    state is taken as the embedding for downstream Poisson prediction. A
-    ``LayerNorm`` layer is applied to the full sequence output to improve
+    - an integer (e.g. ``32``), producing a single GRU layer with hidden size 32, or
+    - a sequence of integers (e.g. ``(64, 32)``), producing a multi-layer GRU stack
+      where each entry specifies the hidden size of one GRU layer.
+
+    Each GRU layer receives the full sequence and outputs a sequence of hidden
+    states. The output of one GRU is fed into the next, allowing the model to learn
+    hierarchical or multi-scale temporal/structural patterns across the feature
+    dimension. A ``LayerNorm`` layer is applied to the final GRU output to improve
     optimisation stability, particularly in transfer-learning settings.
+
+    The final embedding is the last hidden state of the final GRU layer, yielding a
+    fixed-dimensional representation suitable for downstream Poisson prediction or
+    as the shared representation in multi-cell models.
 
     Parameters
     ----------
     n_features : int
         Number of input features before sequence reshaping.
-    hidden_dim : int, optional
-        Dimensionality of the GRU hidden state and the output embedding.
-    num_layers : int, optional
-        Number of stacked GRU layers.
+    hidden_sizes : int or sequence of int
+        Hidden sizes for each GRU layer. If an integer is provided, a single GRU
+        layer is constructed. If a list/tuple is provided, one GRU layer is created
+        per entry.
+    dropout : float, optional
+        Dropout probability applied between GRU layers. Default is 0.1.
 
     Attributes
     ----------
     out_dim : int
-        Dimensionality of the output embedding (equal to ``hidden_dim``).
-    rnn : nn.GRU
-        Recurrent module processing the feature sequence.
+        Dimensionality of the output embedding (equal to the last entry of
+        ``hidden_sizes``).
+    rnns : nn.ModuleList
+        Stack of GRU layers, each processing the full input sequence.
     norm : nn.LayerNorm
-        Normalisation applied to the GRU outputs.
+        Normalisation applied to the final GRU output sequence.
 
     Notes
     -----
-    Inputs are reshaped by ``BaseExtractor`` to ``(batch, features, 1)``, so the
-    GRU receives a sequence of length ``n_features`` with ``input_size = 1``.
-    The final embedding is ``out[:, -1, :]``.
+    Inputs are reshaped by ``BaseExtractor`` to ``(batch, features, 1)``, so each
+    GRU receives a sequence of length ``n_features`` with ``input_size = 1`` for the
+    first layer and ``input_size = hidden_sizes[i]`` for subsequent layers.
+    The final embedding is ``out[:, -1, :]`` from the last GRU layer.
     """
 
-    def __init__(self, n_features, hidden_dim=32, num_layers=1):
+    def __init__(self, n_features, hidden_sizes, dropout=0.1):
         super().__init__(input_type="sequence")
 
-        self.rnn = nn.GRU(
-            input_size=1,
-            hidden_size=hidden_dim,
-            num_layers=num_layers,
-            batch_first=True,
-            dropout=0.1,
-        )
+        # Allow int or tuple/list
+        if isinstance(hidden_sizes, int):
+            hidden_sizes = (hidden_sizes,)
+        self.hidden_sizes = tuple(hidden_sizes)
 
-        self.out_dim = hidden_dim
-        self.norm = nn.LayerNorm(hidden_dim)
+        self.rnns = nn.ModuleList()
+        input_dim = 1  # first GRU sees (batch, seq_len, 1)
+
+        for h in self.hidden_sizes:
+            self.rnns.append(
+                nn.GRU(
+                    input_size=input_dim,
+                    hidden_size=h,
+                    num_layers=1,
+                    batch_first=True,
+                    dropout=dropout,
+                )
+            )
+            input_dim = h  # next GRU receives previous hidden size
+
+        self.out_dim = self.hidden_sizes[-1]
+        self.norm = nn.LayerNorm(self.out_dim)
 
     def forward(self, X):
         X = self.preprocess(X)  # (batch, features, 1)
-        out, _ = self.rnn(X)  # GRU sees seq_len = features
+
+        out = X
+        for gru in self.rnns:
+            out, _ = gru(out)  # (batch, seq_len, hidden)
+
         out = self.norm(out)
-        return out[:, -1, :]
+        return out[:, -1, :]  # final hidden state
 
 
 # ------------------------------------------------------------------
@@ -434,7 +489,7 @@ class PoissonNN(BasePoissonModel):
     predictions for a single neuron.
     """
 
-    def __init__(self, n_features, hidden_sizes=[32, 16], extractor=None):
+    def __init__(self, n_features, hidden_sizes, extractor=None):
         super().__init__()
 
         # build each hidden layer sequentially or use provided extractor
@@ -461,10 +516,10 @@ class PoissonNN(BasePoissonModel):
         return self.head(h).squeeze(-1)
 
 
-class SharedHiddenPoissonNN(BasePoissonModel):
+class DeepSharedShallowHeadPoissonNN(BasePoissonModel):
     """
-    Multi-cell Poisson model with a shared hidden representation and
-    cell-specific output heads.
+    Multi-cell Poisson model with a deep shared hidden representation and
+    shallow cell-specific output heads.
 
     This architecture is designed for population modelling where multiple cells
     are recorded from the same stimulus or feature set. A shared feature
@@ -503,7 +558,7 @@ class SharedHiddenPoissonNN(BasePoissonModel):
     This model enforces strong sharing: all nonlinear transformations occur in
     the shared extractor, while per-cell variability is captured only through
     the final linear readout. More flexible variants include
-    ``SharedNonlinearHeadsPoissonNN`` and ``SharedFirstLayerPoissonNN``.
+    ``DeepSharedDeepHeadPoissonNN`` and ``ShallowSharedDeepHeadPoissonNN``.
     """
 
     def __init__(self, n_features, hidden_sizes, n_cells, shared_extractor=None):
@@ -540,10 +595,10 @@ class SharedHiddenPoissonNN(BasePoissonModel):
         return self.heads[cell_idx](h).squeeze(-1)
 
 
-class SharedNonlinearHeadsPoissonNN(BasePoissonModel):
+class DeepSharedDeepHeadPoissonNN(BasePoissonModel):
     """
-    Multi-cell Poisson model with a shallow shared feature extractor and
-    cell-specific nonlinear heads.
+    Multi-cell Poisson model with a deep shared feature extractor and
+    deep cell-specific nonlinear heads.
 
     This architecture shares only the low-level representation across cells,
     allowing the model to capture population-level structure while still giving
@@ -584,7 +639,7 @@ class SharedNonlinearHeadsPoissonNN(BasePoissonModel):
     Notes
     -----
     This model provides a more flexible alternative to
-    ``SharedHiddenPoissonNN`` by allowing each cell to learn its own nonlinear
+    ``DeepSharedShallowHeadPoissonNN`` by allowing each cell to learn its own nonlinear
     transformation on top of the shared representation. It is often a strong
     choice when cells share coarse structure but differ in tuning complexity.
     """
@@ -627,7 +682,7 @@ class SharedNonlinearHeadsPoissonNN(BasePoissonModel):
         return self.heads[cell_idx](h).squeeze(-1)
 
 
-class SharedFirstLayerPoissonNN(BasePoissonModel):
+class ShallowSharedDeepHeadPoissonNN(BasePoissonModel):
     """
     Multi-cell Poisson model that shares only the first layer, with deeper
     layers unique to each cell.

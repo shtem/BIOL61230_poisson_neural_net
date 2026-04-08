@@ -30,6 +30,7 @@ def pseudo_r2(y_true, y_pred):
     """
     # construct null prediction array equal to the mean of the true values
     y_null = np.full_like(y_true, y_true.mean())
+    y_pred = np.clip(y_pred, 1e-8, None)
 
     dev_model = mean_poisson_deviance(y_true, y_pred)
     dev_null = mean_poisson_deviance(y_true, y_null)

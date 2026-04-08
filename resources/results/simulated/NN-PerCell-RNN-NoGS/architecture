@@ -110,10 +110,23 @@ strict digraph model {
                     </TR>
                     <TR>
                         <TD COLSPAN="2">output: </TD>
-                        <TD COLSPAN="2">(1, 32, 32), (2, 1, 32) </TD>
+                        <TD COLSPAN="2">(1, 32, 64), (1, 1, 64) </TD>
                     </TR>
                     </TABLE>> fillcolor=darkseagreen1]
 		9 [label=<
+                    <TABLE BORDER="0" CELLBORDER="1"
+                    CELLSPACING="0" CELLPADDING="4">
+                    <TR>
+                        <TD ROWSPAN="2">GRU<BR/>depth:2</TD>
+                        <TD COLSPAN="2">input:</TD>
+                        <TD COLSPAN="2">(1, 32, 64) </TD>
+                    </TR>
+                    <TR>
+                        <TD COLSPAN="2">output: </TD>
+                        <TD COLSPAN="2">(1, 32, 32), (1, 1, 32) </TD>
+                    </TR>
+                    </TABLE>> fillcolor=darkseagreen1]
+		10 [label=<
                     <TABLE BORDER="0" CELLBORDER="1"
                     CELLSPACING="0" CELLPADDING="4">
                     <TR>
@@ -126,7 +139,7 @@ strict digraph model {
                         <TD COLSPAN="2">(1, 32, 32) </TD>
                     </TR>
                     </TABLE>> fillcolor=darkseagreen1]
-		10 [label=<
+		11 [label=<
                     <TABLE BORDER="0" CELLBORDER="1"
                     CELLSPACING="0" CELLPADDING="4">
                     <TR>
@@ -142,7 +155,7 @@ strict digraph model {
 	}
 	subgraph cluster_3 {
 		fontsize=12 label=Sequential labeljust=l style=dashed
-		11 [label=<
+		12 [label=<
                     <TABLE BORDER="0" CELLBORDER="1"
                     CELLSPACING="0" CELLPADDING="4">
                     <TR>
@@ -155,7 +168,7 @@ strict digraph model {
                         <TD COLSPAN="2">(1, 1) </TD>
                     </TR>
                     </TABLE>> fillcolor=darkseagreen1]
-		12 [label=<
+		13 [label=<
                     <TABLE BORDER="0" CELLBORDER="1"
                     CELLSPACING="0" CELLPADDING="4">
                     <TR>
@@ -169,7 +182,7 @@ strict digraph model {
                     </TR>
                     </TABLE>> fillcolor=darkseagreen1]
 	}
-	13 [label=<
+	14 [label=<
                     <TABLE BORDER="0" CELLBORDER="1"
                     CELLSPACING="0" CELLPADDING="4">
                     <TR>
@@ -182,7 +195,7 @@ strict digraph model {
                         <TD COLSPAN="2">(1,) </TD>
                     </TR>
                     </TABLE>> fillcolor=aliceblue]
-	14 [label=<
+	15 [label=<
                     <TABLE BORDER="0" CELLBORDER="1"
                     CELLSPACING="0" CELLPADDING="4">
                         <TR><TD>output-tensor<BR/>depth:0</TD><TD>(1,)</TD></TR>
@@ -201,4 +214,5 @@ strict digraph model {
 	11 -> 12
 	12 -> 13
 	13 -> 14
+	14 -> 15
 }

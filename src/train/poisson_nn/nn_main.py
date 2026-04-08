@@ -5,9 +5,9 @@ import torch.nn as nn
 import numpy as np
 from src.train.poisson_nn.nn_models import (
     PoissonNN,
-    SharedHiddenPoissonNN,
-    SharedFirstLayerPoissonNN,
-    SharedNonlinearHeadsPoissonNN,
+    DeepSharedShallowHeadPoissonNN,
+    ShallowSharedDeepHeadPoissonNN,
+    DeepSharedDeepHeadPoissonNN,
 )
 from src.train.poisson_nn.nn_training import PoissonTrainer, TransferLearningTrainer
 from src.train.utils import _to_tensor
@@ -96,20 +96,20 @@ def make_model(model_type, n_features, n_cells, **mp):
 
     Parameters
     ----------
-    model_type : {"shared_hidden", "shared_nonlinear_heads", "shared_first_layer"}
+    model_type : {"deep_shared_shallow_head", "deep_shared_deep_head", "shallow_shared_deep_head"}
         Specifies which architecture to instantiate:
 
-        - "shared_hidden":
+        - "deep_shared_shallow_head":
             Deep shared feature extractor with simple linear per-cell heads.
             Expects `mp["hidden_sizes"]` (list of ints).
 
-        - "shared_nonlinear_heads":
+        - "deep_shared_deep_head":
             Shallow shared trunk with nonlinear per-cell MLP heads.
             Expects:
                 `mp["shared_sizes"]` (list of ints)
                 `mp["head_sizes"]`   (list of ints)
 
-        - "shared_first_layer":
+        - "shallow_shared_deep_head":
             Only the first layer is shared; all deeper layers are per-cell.
             Expects:
                 `mp["shared_dim"]`  (int)
@@ -132,16 +132,16 @@ def make_model(model_type, n_features, n_cells, **mp):
         architecture and ready for training with the transfer-learning trainer.
     """
     shared_extractor = mp.get("shared_extractor", None)
-    if model_type == "shared_hidden":
-        return SharedHiddenPoissonNN(
+    if model_type == "deep_shared_shallow_head":
+        return DeepSharedShallowHeadPoissonNN(
             n_features=n_features,
             hidden_sizes=mp["hidden_sizes"],
             n_cells=n_cells,
             shared_extractor=shared_extractor,
         )
 
-    elif model_type == "shared_nonlinear_heads":
-        return SharedNonlinearHeadsPoissonNN(
+    elif model_type == "deep_shared_deep_head":
+        return DeepSharedDeepHeadPoissonNN(
             n_features=n_features,
             shared_sizes=mp["shared_sizes"],
             head_sizes=mp["head_sizes"],
@@ -149,8 +149,8 @@ def make_model(model_type, n_features, n_cells, **mp):
             shared_extractor=shared_extractor,
         )
 
-    elif model_type == "shared_first_layer":
-        return SharedFirstLayerPoissonNN(
+    elif model_type == "shallow_shared_deep_head":
+        return ShallowSharedDeepHeadPoissonNN(
             n_features=n_features,
             shared_dim=mp["shared_dim"],
             head_sizes=mp["head_sizes"],
@@ -229,6 +229,20 @@ def fit_poisson_nn(
     # ------------------------------------------------------------
     # 1. Prepare datasets (validation only if grid_search=True)
     # ------------------------------------------------------------
+
+    print("\n=== Global training hyperparameters ===")
+    print(f"default hidden_sizes: {hidden_sizes}")
+    print(f"k_folds: {k_folds}")
+    print(f"lr (default): {lr}")
+    print(f"epochs (default): {epochs}")
+    print(f"weight_decay: {weight_decay}")
+    print(f"l1_lambda (default): {l1_lambda}")
+    print(f"batch_size (default): {batch_size}")
+    print(f"patience (default): {patience}")
+    print(f"train_frac: {train_frac}")
+    print(f"val_frac: {val_frac}")
+    print("==============================================\n")
+
     use_val = True
     n_features = X.shape[0]
     if verbose:
@@ -265,6 +279,11 @@ def fit_poisson_nn(
             "batch_size": batch_size,
             "patience": patience,
         }
+
+        print("\n=== Using the following hyperparameters (NO GRID SEARCH) ===")
+        print("Model params:", model_params)
+        print("Trainer params:", trainer_params)
+        print("===========================================================\n")
 
         # when verbose, print a torchsummary of the architecture once
         if verbose:
@@ -355,11 +374,12 @@ def fit_poisson_nn(
         model = model.to(device)
         return run_trainer(trainer, model, Xtr_c, ytr_c, Xv_c, yv_c)
 
+    print("\n=== Starting per-cell grid search ===")
+    print("model_param_grid=", model_param_grid)
+    print("trainer_param_grid=", trainer_param_grid)
+    print("===========================================================\n")
+
     # perform per-cell cross-validated grid search
-    if verbose:
-        print("Starting per-cell grid search")
-        print("model_param_grid=", model_param_grid)
-        print("trainer_param_grid=", trainer_param_grid)
     gs = grid_search_per_cell(
         Xtr_flat,
         Ytr_flat,
@@ -454,15 +474,15 @@ def fit_poisson_nn_transfer_learning(
     scaler=None,
     verbose=False,
     agg_method="median",
-    model_type="shared_hidden",
+    model_type="deep_shared_shallow_head",
 ):
     """
     Train a multi-cell Poisson neural network using transfer learning.
 
     This function supports three architectures:
-    - "shared_hidden": deep shared trunk + linear per-cell heads
-    - "shared_nonlinear_heads": shallow shared trunk + nonlinear per-cell heads
-    - "shared_first_layer": only the first layer shared, deeper layers per-cell
+    - "deep_shared_shallow_head": deep shared trunk + linear per-cell heads
+    - "deep_shared_deep_head": shallow shared trunk + nonlinear per-cell heads
+    - "shallow_shared_deep_head": only the first layer shared, deeper layers per-cell
 
     Two training modes are supported:
     - No grid search: model hyperparameters are passed via `model_params`
@@ -487,7 +507,7 @@ def fit_poisson_nn_transfer_learning(
     model_params : dict or None
         Direct model parameters for no-grid-search mode.
     hidden_sizes : list
-        Default shared hidden sizes for "shared_hidden".
+        Default shared hidden sizes for "deep_shared_shallow_head".
     lr, epochs, weight_decay, l1_lambda, batch_size, patience : trainer settings
     scaler : callable or None
         Optional per-cell feature scaler.
@@ -495,7 +515,7 @@ def fit_poisson_nn_transfer_learning(
         Print architecture summary and progress.
     agg_method : {"median", "mean"}
         Aggregation method for TL grid search.
-    model_type : {"shared_hidden", "shared_nonlinear_heads", "shared_first_layer"}
+    model_type : {"deep_shared_shallow_head", "deep_shared_deep_head", "shallow_shared_deep_head"}
         Selects which TL architecture to use.
 
     Returns
@@ -507,6 +527,17 @@ def fit_poisson_nn_transfer_learning(
             "all_scores": grid search scores or None
         }
     """
+
+    print("\n=== Global training hyperparameters ===")
+    print(f"default hidden_sizes: {hidden_sizes}")
+    print(f"lr (default): {lr}")
+    print(f"epochs (default): {epochs}")
+    print(f"weight_decay: {weight_decay}")
+    print(f"l1_lambda (default): {l1_lambda}")
+    print(f"batch_size (default): {batch_size}")
+    print(f"patience (default): {patience}")
+    print(f"agg_method: {agg_method}")
+    print("============================================\n")
 
     unique_cells = np.unique(cell_ids)
     n_cells = len(unique_cells)
@@ -597,6 +628,11 @@ def fit_poisson_nn_transfer_learning(
             "patience": patience,
         }
 
+        print("\n=== Using the following hyperparameters (NO GRID SEARCH) ===")
+        print("Model params:", model_params)
+        print("Trainer params:", trainer_params)
+        print("===========================================================\n")
+
         model = make_model(model_type, n_features, n_cells, **model_params)
         trainer = TransferLearningTrainer(**trainer_params)
         model = model.to(device)
@@ -644,8 +680,13 @@ def fit_poisson_nn_transfer_learning(
             "shared_sizes": [hidden_sizes],
             "head_sizes": [[32, 16]],
             "shared_dim": [hidden_sizes[0]],
-            "shared_extractor": [None],  # NEW
+            "shared_extractor": [None],
         }
+
+    print("\n=== Starting transfer learning grid search ===")
+    print("model_param_grid=", model_param_grid)
+    print("trainer_param_grid=", trainer_param_grid)
+    print("===========================================================\n")
 
     gs = grid_search_transfer_learning(
         Xtr_flat,
