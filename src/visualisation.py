@@ -699,6 +699,7 @@ def plot_covariate_trial(
     figsize=None,
     title=None,
     show_only_indices=None,
+    show_legends=False,
 ):
     """Publication-quality plot of covariates and spike counts for one trial.
 
@@ -740,6 +741,8 @@ def plot_covariate_trial(
     title : str or None, optional
         Suptitle for the figure. If ``None``, "Cell {cell_idx}, Trial
         {trial_idx}" is used.
+    show_legends : bool, optional
+        If ``True``, add legends to each panel. Default ``False`` for a cleaner
 
     Returns
     -------
@@ -839,16 +842,15 @@ def plot_covariate_trial(
         ax.set_ylabel(
             covariate_names[i],
             fontsize=8,
-            rotation=0,
-            labelpad=0,
-            ha="right",
+            rotation=90,  # vertical
+            labelpad=9,
+            ha="center",
             va="center",
         )
-        ax.yaxis.set_label_coords(-0.02, 0.5)
 
         # minimal y-axis: just show the zero line for reference
         ax.axhline(0, color="gray", linewidth=0.5, linestyle=":")
-        ax.tick_params(axis="y", labelsize=7)
+        ax.tick_params(axis="y", labelsize=7, rotation=45)
         ax.tick_params(axis="x", which="both", bottom=False, labelbottom=False)
 
     # --- spike count panel (bottom) ---
@@ -861,18 +863,17 @@ def plot_covariate_trial(
     plt.setp(stemlines, linewidth=0.9)
     plt.setp(markerline, markersize=3)
 
-    ax_spk.set_ylabel("Spikes", fontsize=8, rotation=0, ha="right", va="center")
-    ax_spk.yaxis.set_label_coords(-0.01, 0.5)
-    ax_spk.set_xlabel(f"Time (ms)", fontsize=10)
+    ax_spk.set_ylabel(
+        "Spikes", fontsize=8, rotation=90, labelpad=10, ha="center", va="center"
+    )
+    ax_spk.set_xlabel(f"Time (ms)", fontsize=10, labelpad=10, ha="center")
     ax_spk.tick_params(axis="y", labelsize=7)
     ax_spk.yaxis.set_major_locator(ticker.MaxNLocator(integer=True, nbins=3))
 
     # --- title and cosmetics ---
     if title is None:
         title = f"Cell {cell_idx}, Trial {trial_idx}"
-    fig.suptitle(title, fontsize=11, y=1.005)
 
-    # add a colour legend explaining the three covariate groups
     from matplotlib.patches import Patch
 
     legend_elements = [
@@ -884,15 +885,31 @@ def plot_covariate_trial(
         ),
         Patch(facecolor="#5E4FA2", alpha=0.8, label="Visual (ON, ON/OFF fast/slow)"),
     ]
-    axes[0].legend(
-        handles=legend_elements,
-        loc="upper right",
-        fontsize=7,
-        framealpha=0.85,
-        handlelength=1.0,
-    )
 
-    fig.tight_layout(rect=[0.08, 0, 1, 0.97])
+    # Title first, then legend horizontally below it
+    fig.suptitle(title, fontsize=11, y=0.97)
+
+    if show_legends:
+        fig.legend(
+            handles=legend_elements,
+            loc="upper center",
+            bbox_to_anchor=(0.5, 0.965),  # centred horizontally, just below title
+            ncol=3,  # horizontal — one row, three columns
+            fontsize=7.5,
+            framealpha=0.9,
+            handlelength=1.2,
+            columnspacing=1.0,
+            borderaxespad=0,
+        )
+
+    # More space on left for y-axis labels, top space for title + legend
+    fig.subplots_adjust(
+        left=0.15,    # space for y-axis labels
+        right=0.97,   # small right margin
+        top=0.93,     # space for title
+        bottom=0.07,  # space for x-axis label
+        hspace=0.08,  # tight vertical spacing between panels
+    )
     plt.close(fig)
     return fig
 
