@@ -210,3 +210,4 @@ __marimo__/
 resources/data/real/
 # resources/models/real/
 dump.txt
+notebooks/*_temp*.ipynb

@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 from pathlib import Path
 from torchview import draw_graph
 from itertools import combinations
@@ -210,15 +211,28 @@ def compare_models_for_cell(
 def compare_r2_across_cells(
     model_results_list,
     split="test",
+    sort_by=None,
+    figsize=None,
 ):
-    """Line plot of pseudo-R² values across cells for an arbitrary set of models.
+    """Line plot of pseudo-R² values across cells for multiple models.
+
+    Most useful for identifying which individual cells are consistently well
+    or poorly predicted across all models. For a cleaner population-level
+    comparison, use plot_r2_comparison_boxplot instead.
 
     Parameters
     ----------
     model_results_list : list of tuples
-        ``(results_dict, model_name)`` pairs for each model to include.
+        (results_dict, model_name) pairs.
     split : str, optional
-        Which split to use when extracting pseudo-R².
+        Data split to use. Default "test".
+    sort_by : str or None, optional
+        If provided, sort cells by the pseudo-R² of this named model
+        (ascending) before plotting. This makes cross-model patterns much
+        clearer — cells that are hard for one model tend to be hard for all.
+        Example: sort_by="GLM" to rank cells by GLM performance.
+    figsize : tuple or None, optional
+        Override figure size.
 
     Returns
     -------
@@ -226,26 +240,48 @@ def compare_r2_across_cells(
     """
     _set_journal_style()
 
-    # assume all dicts share the same cell keys
     first_results = model_results_list[0][0]
     cells = sorted(first_results.keys())
 
-    fig, ax = plt.subplots(figsize=(14, 7))
+    # optionally sort cells by a reference model's performance
+    if sort_by is not None:
+        ref = {name: res for res, name in model_results_list}.get(sort_by)
+        if ref is not None:
+            cells = sorted(cells, key=lambda c: ref[c][split]["pseudo_r2"])
 
-    cmap = plt.get_cmap("tab20")
-    n_models = len(model_results_list)
-    colours = [cmap(i % 20) for i in range(n_models)]
+    if figsize is None:
+        figsize = (max(10, len(cells) * 0.5), 5)
 
-    for (results, name), colour in zip(model_results_list, colours):
+    fig, ax = plt.subplots(figsize=figsize)
+
+    cmap = plt.get_cmap("tab10")
+    for i, (results, name) in enumerate(model_results_list):
         r2 = [results[c][split]["pseudo_r2"] for c in cells]
-        ax.plot(cells, r2, label=name, marker="o", color=colour)
+        ax.plot(
+            range(len(cells)),
+            r2,
+            label=name,
+            marker="o",
+            markersize=4,
+            linewidth=1.2,
+            color=cmap(i % 10),
+            alpha=0.85,
+        )
 
-    ax.set_xlabel("Cell ID")
-    ax.set_ylabel(f"{split.capitalize()} pseudo-R²")
-    ax.set_title("Model performance across cells")
-    ax.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
+    # chance reference line
+    ax.axhline(0, color="gray", linestyle="--", linewidth=1.0, label="Chance")
+
+    # use cell rank on x-axis (not raw cell ID) so spacing is even
+    ax.set_xticks(range(len(cells)))
+    ax.set_xticklabels([str(c) for c in cells], rotation=45, ha="right", fontsize=8)
+    ax.set_xlabel(
+        f"Cell ID{' (sorted by GLM performance)' if sort_by else ''}", fontsize=11
+    )
+    ax.set_ylabel(f"{split.capitalize()} pseudo-R²", fontsize=11)
+    ax.set_title("Model performance across individual cells", fontsize=12)
+    ax.legend(bbox_to_anchor=(1.01, 1), loc="upper left", fontsize=9)
+
     fig.tight_layout()
-
     plt.close(fig)
     return fig
 
@@ -360,71 +396,588 @@ def plot_training_curves(train_losses=None, val_losses=None, title="Training cur
     return fig
 
 
+"""
+New visualisation functions to append to visualisation.py
+----------------------------------------------------------
+Add these two functions to the end of your existing visualisation.py file.
+They follow the same style conventions as the existing code (_set_journal_style,
+plt.close(fig) before return, consistent docstrings).
+
+Functions added:
+    plot_r2_comparison_boxplot  -- grouped box plot comparing pseudo-R² across models
+    plot_r2_histogram           -- histogram of pseudo-R² values (like paper Fig 3E)
+    plot_covariate_trial        -- time-series of covariates + spikes for one trial
+"""
+
+
+# ---------------------------------------------------------------------------
+# Figure 3 / 4 / 5 helper  ―  model performance comparison box plot
+# ---------------------------------------------------------------------------
+
+
+def plot_r2_comparison_boxplot(
+    model_results_list,
+    split="test",
+    title=None,
+    figsize=None,
+    show_points=True,
+    chance_line=True,
+    color_palette=None,
+    rotate_labels=True,
+):
+    """Grouped box plot comparing pseudo-R² distributions across models.
+
+    This is the main figure function for comparing model performance in the
+    report. For each model in ``model_results_list`` it draws a box showing
+    the interquartile range of pseudo-R² across all cells, with the median
+    marked, and (optionally) individual cell values overlaid as jittered
+    dots so the reader can see the full distribution without losing
+    individual-cell information.
+
+    A horizontal dashed line at y=0 marks chance-level performance (a model
+    predicting the mean firing rate). Cells with negative pseudo-R² are
+    therefore performing *worse* than the null model, which is an important
+    reference point.
+
+    Parameters
+    ----------
+    model_results_list : list of tuples
+        Each tuple is ``(results_dict, model_name)`` exactly as used by
+        ``compare_r2_across_cells``. Models are plotted left-to-right in
+        list order.
+    split : str, optional
+        Which data split to use (``"train"``, ``"val"`` or ``"test"``).
+        Default ``"test"``.
+    title : str or None, optional
+        Figure title. If ``None``, a sensible default is used.
+    figsize : tuple or None, optional
+        Override the default figure size. Default scales with number of models.
+    show_points : bool, optional
+        If ``True``, overlay individual cell pseudo-R² values as jittered
+        scatter points. Default ``True``.
+    chance_line : bool, optional
+        If ``True``, draw a dashed horizontal line at y = 0 labelled
+        "Chance". Default ``True``.
+    color_palette : list or None, optional
+        List of matplotlib colour strings, one per model. If ``None``, the
+        tab10 palette is used automatically.
+    rotate_labels : bool, optional
+        If ``True``, rotate x-axis labels 30° for readability when model
+        names are long. Default ``True``.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        Figure ready to save or display.
+
+    Notes
+    -----
+    The function uses ``matplotlib.axes.Axes.boxplot`` directly rather than
+    seaborn so that it stays dependency-light and is easy to adjust.
+    """
+    _set_journal_style()
+
+    n_models = len(model_results_list)
+
+    # --- collect per-model pseudo-R² arrays ---
+    model_names = []
+    r2_arrays = []
+
+    for results, name in model_results_list:
+        cells = sorted(results.keys())
+        r2 = np.array([results[c][split]["pseudo_r2"] for c in cells])
+        model_names.append(name)
+        r2_arrays.append(r2)
+
+    # --- figure geometry ---
+    if figsize is None:
+        # scale width with number of models, minimum 6 inches
+        width = max(6, n_models * 1.1)
+        figsize = (width, 5)
+
+    fig, ax = plt.subplots(figsize=figsize)
+
+    # --- colour palette ---
+    if color_palette is None:
+        cmap = plt.get_cmap("tab10")
+        color_palette = [cmap(i % 10) for i in range(n_models)]
+
+    # --- draw boxes ---
+    positions = np.arange(1, n_models + 1)
+
+    bp = ax.boxplot(
+        r2_arrays,
+        positions=positions,
+        widths=0.5,
+        patch_artist=True,  # filled boxes
+        showfliers=False,  # hide outlier markers; we show all points
+        medianprops=dict(color="black", linewidth=2),
+        whiskerprops=dict(linewidth=1.2),
+        capprops=dict(linewidth=1.2),
+        boxprops=dict(linewidth=1.2),
+    )
+
+    # colour each box to match the scatter points below
+    for patch, colour in zip(bp["boxes"], color_palette):
+        patch.set_facecolor(colour)
+        patch.set_alpha(0.45)
+
+    # --- jittered individual cell points ---
+    if show_points:
+        rng = np.random.default_rng(42)  # fixed seed for reproducibility
+        for pos, r2, colour in zip(positions, r2_arrays, color_palette):
+            # small horizontal jitter so overlapping points separate visually
+            jitter = rng.uniform(-0.18, 0.18, size=len(r2))
+            ax.scatter(
+                pos + jitter,
+                r2,
+                color=colour,
+                alpha=0.65,
+                s=18,
+                edgecolors="none",
+                zorder=3,  # draw on top of box
+            )
+
+    # --- chance-level reference line ---
+    if chance_line:
+        ax.axhline(
+            y=0,
+            color="gray",
+            linestyle="--",
+            linewidth=1.0,
+            label="Chance (null model)",
+            zorder=1,
+        )
+        ax.legend(fontsize=9, loc="upper left")
+
+    # --- axes labels and formatting ---
+    ax.set_xticks(positions)
+    ax.set_xticklabels(
+        model_names,
+        rotation=30 if rotate_labels else 0,
+        ha="right" if rotate_labels else "center",
+        fontsize=9,
+    )
+
+    ax.set_ylabel(f"{split.capitalize()} pseudo-R²", fontsize=11)
+    ax.set_xlabel("Model", fontsize=11)
+
+    if title is None:
+        title = f"Model comparison — {split} pseudo-R² across cells"
+    ax.set_title(title, fontsize=12, pad=10)
+
+    # add a subtle grid on the y-axis only; the box plot already has structure
+    ax.yaxis.grid(True, alpha=0.35, linestyle=":")
+    ax.set_axisbelow(True)
+
+    # tight y-limits with a small margin so points aren't clipped
+    all_r2 = np.concatenate(r2_arrays)
+    y_pad = (all_r2.max() - all_r2.min()) * 0.08
+    ax.set_ylim(all_r2.min() - y_pad, all_r2.max() + y_pad)
+
+    fig.tight_layout()
+    plt.close(fig)
+    return fig
+
+
+# ---------------------------------------------------------------------------
+# Bonus helper  ―  pseudo-R² histogram  (mirrors paper Figure 3E style)
+# ---------------------------------------------------------------------------
+
+
+def plot_r2_histogram(
+    model_results_list,
+    split="test",
+    bins=20,
+    title=None,
+    figsize=(5, 3.5),
+):
+    """Overlaid histogram of pseudo-R² values across cells for multiple models.
+
+    This reproduces the style of Figure 3E in Ebrahimi et al. (2025), making
+    the comparison to the paper's GLM baseline visually direct. Each model is
+    drawn as a semi-transparent histogram so overlaps are visible.
+
+    Parameters
+    ----------
+    model_results_list : list of tuples
+        ``(results_dict, model_name)`` pairs.
+    split : str, optional
+        Data split to use. Default ``"test"``.
+    bins : int, optional
+        Number of histogram bins. Default 20.
+    title : str or None, optional
+        Figure title.
+    figsize : tuple, optional
+        Figure dimensions in inches.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+    """
+    _set_journal_style()
+    fig, ax = plt.subplots(figsize=figsize)
+    cmap = plt.get_cmap("tab10")
+
+    for i, (results, name) in enumerate(model_results_list):
+        cells = sorted(results.keys())
+        r2 = np.array([results[c][split]["pseudo_r2"] for c in cells])
+        ax.hist(
+            r2,
+            bins=bins,
+            histtype='step',        # CHANGED: outline only, no fill
+            linewidth=2.0,          # thick enough to see clearly
+            color=cmap(i % 10),
+            label=name,
+        )
+        # add a subtle fill at very low alpha for easier reading
+        ax.hist(
+            r2,
+            bins=bins,
+            histtype='stepfilled',
+            alpha=0.12,             # very subtle fill
+            color=cmap(i % 10),
+        )
+
+    ax.axvline(x=0, color="gray", linestyle="--", linewidth=1.0, label="Chance")
+    ax.set_xlabel(f"{split.capitalize()} pseudo-R²", fontsize=11)
+    ax.set_ylabel("Number of cells", fontsize=11)
+    if title is None:
+        title = f"Distribution of pseudo-R² across cells ({split})"
+    ax.set_title(title, fontsize=12)
+
+    # place legend outside the plot area to avoid overlap with bars
+    ax.legend(fontsize=9, bbox_to_anchor=(1.01, 1), loc='upper left')
+    fig.tight_layout()
+    plt.close(fig)
+    return fig
+
+
+# ---------------------------------------------------------------------------
+# Figure 1 helper  ―  covariate time-series + spike counts for one trial
+# ---------------------------------------------------------------------------
+
+# Canonical covariate names matching the real data X matrix.
+# Index 0-4 are the core motion/tilt covariates; 5-8 are positional;
+# 9-13 are the visual response covariates (visual stimulation dataset).
+COVARIATE_NAMES_REAL = [
+    "Tilt angle",  # 0
+    "aPM (ang. passive)",  # 1
+    "lPM (lin. passive)",  # 2
+    "aAM (ang. active)",  # 3
+    "lAM (lin. active)",  # 4
+    "Sin(Ori)",  # 5
+    "Cos(Ori)",  # 6
+    "DistRot",  # 7
+    "TiltL",  # 8
+    "TiltR",  # 9
+    "ON",  # 10
+    "ON_fast",  # 11
+    "OFF_fast",  # 12
+    "ON_slow",  # 13
+]
+
+COVARIATE_NAMES_SIMULATED = [
+    "Tilt angle",  # 0
+    "aPM (ang. passive)",  # 1
+    "aAM (ang. active)",  # 2
+    "lPM (lin. passive)",  # 3
+    "lAM (lin. active)",  # 4
+]
+
+
+def plot_covariate_trial(
+    X,
+    Y,
+    cell_ids,
+    cell_idx,
+    trial_idx,
+    covariate_names=None,
+    trials_per_cell=400,
+    bin_duration_ms=50,
+    highlight_motion=True,
+    figsize=None,
+    title=None,
+    show_only_indices=None,
+):
+    """Publication-quality plot of covariates and spike counts for one trial.
+
+    Plots each covariate as a separate time-series panel, with the cell's
+    spike counts shown as a stem plot in the bottom panel. This is the key
+    data-overview figure that establishes what the inputs and outputs look
+    like for a reader unfamiliar with the dataset.
+
+    The time axis is converted from bin indices to milliseconds using
+    ``bin_duration_ms`` so the x-axis is interpretable without knowledge
+    of the binning scheme.
+
+    Parameters
+    ----------
+    X : ndarray, shape (n_features, n_time)
+        Full feature matrix for all cells.
+    Y : ndarray, shape (n_time,)
+        Full spike count vector for all cells.
+    cell_ids : ndarray, shape (n_time,)
+        Cell identifier for each time bin.
+    cell_idx : int
+        Which cell to visualise (must be in ``np.unique(cell_ids)``).
+    trial_idx : int
+        Zero-based trial index within the cell (0 to trials_per_cell - 1).
+    covariate_names : list of str or None, optional
+        Names for each row of X. If ``None``, generic labels ``Cov 0``,
+        ``Cov 1`` ... are used. Use ``COVARIATE_NAMES_REAL`` or
+        ``COVARIATE_NAMES_SIMULATED`` as a convenience.
+    trials_per_cell : int, optional
+        Number of trials per cell. Used to compute bin boundaries.
+        Default 400 (real data). Use 120 for simulated data.
+    bin_duration_ms : int, optional
+        Duration of each time bin in milliseconds. Default 50 ms.
+    highlight_motion : bool, optional
+        If ``True``, shade the motion covariate panels (indices 0–4) with a
+        very light background to visually group them. Default ``True``.
+    figsize : tuple or None, optional
+        Override figure size. Default scales with number of features.
+    title : str or None, optional
+        Suptitle for the figure. If ``None``, "Cell {cell_idx}, Trial
+        {trial_idx}" is used.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        Figure with n_features + 1 stacked panels sharing the x-axis.
+
+    Examples
+    --------
+    >>> from src.visualisation import (
+    ...     plot_covariate_trial, COVARIATE_NAMES_REAL
+    ... )
+    >>> fig = plot_covariate_trial(
+    ...     X, Y, cell_ids,
+    ...     cell_idx=1, trial_idx=10,
+    ...     covariate_names=COVARIATE_NAMES_REAL,
+    ... )
+    >>> fig.savefig("figure1_covariate_trial.pdf", dpi=300, bbox_inches="tight")
+    """
+    _set_journal_style()
+
+    # --- locate the trial slice ---
+    cell_mask = cell_ids == cell_idx
+    cell_global_idx = np.where(cell_mask)[0]
+
+    n_bins_cell = len(cell_global_idx)
+    bins_per_trial = n_bins_cell // trials_per_cell
+
+    # start index of this trial within the global array
+    start = cell_global_idx[0] + trial_idx * bins_per_trial
+    end = start + bins_per_trial
+    trial_slice = slice(start, end)
+
+    X_trial = X[:, trial_slice]  # (n_features, bins_per_trial)
+    Y_trial = Y[trial_slice]  # (bins_per_trial,)
+
+    n_features = X_trial.shape[0]
+    n_bins = X_trial.shape[1]
+
+    # convert bin indices to milliseconds for the time axis
+    time_ms = np.arange(n_bins) * bin_duration_ms
+
+    # --- covariate names ---
+    if covariate_names is None:
+        covariate_names = [f"Cov {i}" for i in range(n_features)]
+    # safety: truncate or pad if lengths differ
+    covariate_names = list(covariate_names)[:n_features]
+    while len(covariate_names) < n_features:
+        covariate_names.append(f"Cov {len(covariate_names)}")
+    
+    # --- filter to requested covariates only ---
+    # If show_only_indices is None, show all. Otherwise restrict to the
+    # specified rows. This is important for real data where positional and
+    # visual covariates may be constant within a single trial.
+    if show_only_indices is not None:
+        show_only_indices = list(show_only_indices)
+        X_trial = X_trial[show_only_indices, :]
+        covariate_names = [covariate_names[i] for i in show_only_indices]
+    
+    n_features = X_trial.shape[0]   # recompute after filtering
+
+    # --- figure layout ---
+    n_rows = n_features + 1  # one panel per covariate + spike panel
+    if figsize is None:
+        figsize = (8, 1.6 * n_rows)
+
+    fig, axes = plt.subplots(
+        n_rows,
+        1,
+        figsize=figsize,
+        sharex=True,
+        gridspec_kw={"hspace": 0.08},  # tight vertical spacing
+    )
+
+    # --- colour scheme ---
+    # Motion covariates (0-4) in a warm amber; positional (5-9) in teal;
+    # visual (10-13) in indigo. This matches the three logical groups.
+    def _cov_colour(idx):
+        if idx <= 4:
+            return "#E07B39"  # amber — motion covariates
+        elif idx <= 9:
+            return "#2A9D8F"  # teal  — positional covariates
+        else:
+            return "#5E4FA2"  # indigo — visual covariates
+
+    # --- covariate panels ---
+    for i in range(n_features):
+        ax = axes[i]
+        colour = _cov_colour(i)
+
+        ax.plot(time_ms, X_trial[i], color=colour, linewidth=1.2)
+
+        # optional shading to group motion covariates
+        if highlight_motion and i <= 4:
+            ax.set_facecolor("#FFF8F2")  # very light amber wash
+
+        # y-axis label: abbreviated name on the right to save horizontal space
+        ax.set_ylabel(
+            covariate_names[i],
+            fontsize=8,
+            rotation=0,
+            labelpad=0,
+            ha="right",
+            va="center",
+        )
+        ax.yaxis.set_label_coords(-0.02, 0.5)
+
+        # minimal y-axis: just show the zero line for reference
+        ax.axhline(0, color="gray", linewidth=0.5, linestyle=":")
+        ax.tick_params(axis="y", labelsize=7)
+        ax.tick_params(axis="x", which="both", bottom=False, labelbottom=False)
+
+    # --- spike count panel (bottom) ---
+    ax_spk = axes[-1]
+    # use a stem plot: vertical lines from zero up to each spike count
+    # markerline, stemlines, baseline
+    markerline, stemlines, baseline = ax_spk.stem(
+        time_ms, Y_trial, linefmt="C3-", markerfmt="C3.", basefmt="gray"
+    )
+    plt.setp(stemlines, linewidth=0.9)
+    plt.setp(markerline, markersize=3)
+
+    ax_spk.set_ylabel("Spikes", fontsize=8, rotation=0, ha="right", va="center")
+    ax_spk.yaxis.set_label_coords(-0.01, 0.5)
+    ax_spk.set_xlabel(f"Time (ms)", fontsize=10)
+    ax_spk.tick_params(axis="y", labelsize=7)
+    ax_spk.yaxis.set_major_locator(ticker.MaxNLocator(integer=True, nbins=3))
+
+    # --- title and cosmetics ---
+    if title is None:
+        title = f"Cell {cell_idx}, Trial {trial_idx}"
+    fig.suptitle(title, fontsize=11, y=1.005)
+
+    # add a colour legend explaining the three covariate groups
+    from matplotlib.patches import Patch
+
+    legend_elements = [
+        Patch(
+            facecolor="#E07B39", alpha=0.8, label="Motion (aPM, lPM, aAM, lAM, Tilt)"
+        ),
+        Patch(
+            facecolor="#2A9D8F", alpha=0.8, label="Positional (Ori, DistRot, TiltL/R)"
+        ),
+        Patch(facecolor="#5E4FA2", alpha=0.8, label="Visual (ON, ON/OFF fast/slow)"),
+    ]
+    axes[0].legend(
+        handles=legend_elements,
+        loc="upper right",
+        fontsize=7,
+        framealpha=0.85,
+        handlelength=1.0,
+    )
+
+    fig.tight_layout(rect=[0.08, 0, 1, 0.97])
+    plt.close(fig)
+    return fig
+
+
 def journal_plot_pack(
     model_results_list,
     cells,
     split="test",
     base_dir="resources/results/journal",
+    pairwise_pairs=None,
+    example_cells=None,
 ):
-    """Generate per-cell comparison plots for a set of models and save them.
+    """Generate a curated set of report-ready figures and save them to disk.
 
-    This convenience routine iterates over the provided ``cells`` list,
-    produces a comparison figure for each cell using
-    :func:`compare_models_for_cell`, generates a cross-cell R² plot via
-    :func:`compare_r2_across_cells`, and writes all figures to disk.
-    :func:`compare_models_pairwise_r2` is also used to create scatter plots comparing
-    pseudo-R² values for each pair of models.  The resulting images are saved in a
-    subdirectory of ``base_dir`` named after the model comparison (e.g. "NN-MLP vs XGBoost")
-    Returns a list of file paths that were created.
+    Rather than generating every possible pairwise comparison, this function
+    produces a focused set of figures that map directly onto the planned report
+    figures. The caller controls which pairwise comparisons and which example
+    cells to include, keeping the output manageable.
 
     Parameters
     ----------
     model_results_list : list of tuples
-        ``(results_dict, model_name)`` pairs, as accepted by
-        :func:`compare_models_for_cell` and :func:`compare_r2_across_cells`.
+        (results_dict, model_name) pairs for all models to include.
     cells : sequence
-        Cell identifiers to plot per-cell comparisons for.
+        All cell IDs present in the results (used for box plot and histogram).
     split : str, optional
-        Dataset split name to supply to the comparison functions.
+        Data split to evaluate on. Default "test".
     base_dir : str or Path, optional
-        Directory under which the plots are saved.
+        Root directory for saved figures.
+    pairwise_pairs : list of (str, str) or None, optional
+        Specific model name pairs to generate pairwise scatter plots for.
+        If None, defaults to comparing the first model (typically GLM)
+        against every other model — much more focused than all pairs.
+    example_cells : list of int or None, optional
+        Cell IDs to generate per-cell scatter grids for. If None, uses
+        only the first cell. Keep this to 2-3 cells maximum.
 
     Returns
     -------
     list of pathlib.Path
-        Paths to all saved image files (per-cell + R² summary).
+        Paths to all saved image files.
     """
     from src.train.io import save_plot
 
     base_dir = Path(base_dir)
     base_dir.mkdir(parents=True, exist_ok=True)
-
     saved = []
 
-    for cell in cells:
-        fig = compare_models_for_cell(model_results_list, cell, split=split)
-        fname = f"cell_{cell}.png"
-        path = save_plot(fig, "journal", fname, base_dir=base_dir)
-        saved.append(path)
+    # 1. Box plot: full model comparison (the main performance figure)
+    fig_box = plot_r2_comparison_boxplot(model_results_list, split=split)
+    saved.append(save_plot(fig_box, "journal", "r2_boxplot.png", base_dir=base_dir))
 
-    # 2. Cross-cell R² summary plot
-    fig_r2 = compare_r2_across_cells(model_results_list, split=split)
-    path_r2 = save_plot(fig_r2, "journal", "r2_summary.png", base_dir=base_dir)
-    saved.append(path_r2)
+    # 2. Histogram: pseudo-R² distribution (mirrors paper Fig 3E)
+    fig_hist = plot_r2_histogram(model_results_list, split=split)
+    saved.append(save_plot(fig_hist, "journal", "r2_histogram.png", base_dir=base_dir))
 
-    # 3. All pairwise pseudo-R² scatter plots
-    name_pairs = combinations([name for _, name in model_results_list], 2)
+    # 3. Line plot: kept for exploratory use, not the report figure
+    fig_line = compare_r2_across_cells(model_results_list, split=split)
+    saved.append(save_plot(fig_line, "journal", "r2_line.png", base_dir=base_dir))
 
-    for nameA, nameB in name_pairs:
-        fig = compare_models_pairwise_r2(
+    # 4. Pairwise scatter: only the specified pairs (or GLM vs all others)
+    if pairwise_pairs is None:
+        # default: compare the first model against every other
+        baseline_name = model_results_list[0][1]
+        pairwise_pairs = [(baseline_name, name) for _, name in model_results_list[1:]]
+
+    for name_x, name_y in pairwise_pairs:
+        fig_pw = compare_models_pairwise_r2(
             model_results_list,
-            model_x_name=nameA,
-            model_y_name=nameB,
+            model_x_name=name_x,
+            model_y_name=name_y,
             split=split,
         )
-        fname = f"pairwise_{nameA}_vs_{nameB}.png".replace(" ", "_")
-        path = save_plot(fig, "journal", fname, base_dir=base_dir)
-        saved.append(path)
+        fname = f"pairwise_{name_x}_vs_{name_y}.png".replace(" ", "_")
+        saved.append(save_plot(fig_pw, "journal", fname, base_dir=base_dir))
+
+    # 5. Per-cell scatter grids: only for specified example cells
+    if example_cells is None:
+        example_cells = [cells[0]]  # just one cell by default
+
+    for cell in example_cells:
+        fig_cell = compare_models_for_cell(model_results_list, cell, split=split)
+        saved.append(
+            save_plot(fig_cell, "journal", f"cell_{cell}.png", base_dir=base_dir)
+        )
 
     return saved
 
