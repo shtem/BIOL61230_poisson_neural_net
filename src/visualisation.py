@@ -625,8 +625,8 @@ def plot_r2_histogram(
         ax.hist(
             r2,
             bins=bins,
-            histtype='step',        # CHANGED: outline only, no fill
-            linewidth=2.0,          # thick enough to see clearly
+            histtype="step",  # CHANGED: outline only, no fill
+            linewidth=2.0,  # thick enough to see clearly
             color=cmap(i % 10),
             label=name,
         )
@@ -634,8 +634,8 @@ def plot_r2_histogram(
         ax.hist(
             r2,
             bins=bins,
-            histtype='stepfilled',
-            alpha=0.12,             # very subtle fill
+            histtype="stepfilled",
+            alpha=0.12,  # very subtle fill
             color=cmap(i % 10),
         )
 
@@ -647,7 +647,7 @@ def plot_r2_histogram(
     ax.set_title(title, fontsize=12)
 
     # place legend outside the plot area to avoid overlap with bars
-    ax.legend(fontsize=9, bbox_to_anchor=(1.01, 1), loc='upper left')
+    ax.legend(fontsize=9, bbox_to_anchor=(1.01, 1), loc="upper left")
     fig.tight_layout()
     plt.close(fig)
     return fig
@@ -788,7 +788,7 @@ def plot_covariate_trial(
     covariate_names = list(covariate_names)[:n_features]
     while len(covariate_names) < n_features:
         covariate_names.append(f"Cov {len(covariate_names)}")
-    
+
     # --- filter to requested covariates only ---
     # If show_only_indices is None, show all. Otherwise restrict to the
     # specified rows. This is important for real data where positional and
@@ -797,8 +797,8 @@ def plot_covariate_trial(
         show_only_indices = list(show_only_indices)
         X_trial = X_trial[show_only_indices, :]
         covariate_names = [covariate_names[i] for i in show_only_indices]
-    
-    n_features = X_trial.shape[0]   # recompute after filtering
+
+    n_features = X_trial.shape[0]  # recompute after filtering
 
     # --- figure layout ---
     n_rows = n_features + 1  # one panel per covariate + spike panel
