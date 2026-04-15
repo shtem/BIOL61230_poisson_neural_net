@@ -887,7 +887,7 @@ def plot_covariate_trial(
     ]
 
     # Title first, then legend horizontally below it
-    fig.suptitle(title, fontsize=11, y=0.97)
+    fig.suptitle(title, fontsize=11, y=0.975, x=0.57)
 
     if show_legends:
         fig.legend(
@@ -904,9 +904,9 @@ def plot_covariate_trial(
 
     # More space on left for y-axis labels, top space for title + legend
     fig.subplots_adjust(
-        left=0.15,    # space for y-axis labels
-        right=0.97,   # small right margin
-        top=0.93,     # space for title
+        left=0.15,  # space for y-axis labels
+        right=0.97,  # small right margin
+        top=0.93,  # space for title
         bottom=0.07,  # space for x-axis label
         hspace=0.08,  # tight vertical spacing between panels
     )
