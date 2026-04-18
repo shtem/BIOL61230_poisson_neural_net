@@ -45,6 +45,13 @@ def run_trainer(trainer, model, Xtr, ytr=None, Xv=None, yv=None):
         Training targets.
     Xv, yv : array-like, optional
         Validation sets used only by ``PoissonTrainer``.
+
+    Returns
+    -------
+    nn.Module
+        The trained model, with optional attributes ``train_losses`` and
+        ``val_losses`` containing the training and validation loss curves if
+        returned by the trainer.
     """
 
     # --- Transfer Learning Trainer ---

@@ -20,3 +20,21 @@ Cells in this batch: [51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 7
 Filtered dataset shape: (14, 159250) (159250,)
 Unique cells in this batch: [51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71 72 73 74
  75]
+Running batch 3/10
+Cells in this batch: [51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71 72 73 74
+ 75]
+Filtered dataset shape: (14, 159250) (159250,)
+Unique cells in this batch: [51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71 72 73 74
+ 75]
+Running batch 3/10
+Cells in this batch: [51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71 72 73 74
+ 75]
+Filtered dataset shape: (14, 159250) (159250,)
+Unique cells in this batch: [51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71 72 73 74
+ 75]
+Generated 7 plots
+  ..\resources\results\real\batch_2\journal\r2_line.png
+  ..\resources\results\real\batch_2\journal\pairwise_GLM_vs_NN-PerCell-MLP.png
+  ..\resources\results\real\batch_2\journal\pairwise_GLM_vs_NN-DeepSharedDeepHead-TL-MLP.png
+  ..\resources\results\real\batch_2\journal\pairwise_NN-PerCell-MLP_vs_NN-DeepSharedDeepHead-TL-MLP.png
+  ..\resources\results\real\batch_2\journal\cell_60.png
