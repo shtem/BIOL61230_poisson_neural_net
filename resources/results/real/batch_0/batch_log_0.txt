@@ -278,3 +278,15 @@ Generated 7 plots
   ..\resources\results\real\batch_0\journal\pairwise_GLM_vs_NN-DeepSharedDeepHead-TL-MLP.png
   ..\resources\results\real\batch_0\journal\pairwise_NN-PerCell-MLP_vs_NN-DeepSharedDeepHead-TL-MLP.png
   ..\resources\results\real\batch_0\journal\cell_6.png
+Running batch 1/10
+Cells in this batch: [ 1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24
+ 25]
+Filtered dataset shape: (14, 155750) (155750,)
+Unique cells in this batch: [ 1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24
+ 25]
+Generated 7 plots
+  ..\resources\results\real\batch_0\journal\r2_line.png
+  ..\resources\results\real\batch_0\journal\pairwise_GLM_vs_NN-PerCell-MLP.png
+  ..\resources\results\real\batch_0\journal\pairwise_GLM_vs_NN-DeepSharedDeepHead-TL-MLP.png
+  ..\resources\results\real\batch_0\journal\pairwise_NN-PerCell-MLP_vs_NN-DeepSharedDeepHead-TL-MLP.png
+  ..\resources\results\real\batch_0\journal\cell_6.png

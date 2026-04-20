@@ -5,8 +5,6 @@ Add this as a SEPARATE notebook (or a final cell in any batch notebook)
 once you have completed multiple batches. It loads the CSV files saved
 by statistical_analysis_cell.py and produces combined statistics across
 all completed batches.
-
-Run this after completing batches 2 and 3 to get the full 100-cell analysis.
 """
 
 # ── imports ────────────────────────────────────────────────────────────────
