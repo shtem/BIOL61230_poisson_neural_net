@@ -35,7 +35,7 @@ def summarise_and_test(df, base_results_dir, batch_index):
         The df_test_perf_gs DataFrame produced earlier in the notebook.
         Must have a 'cell' column and one column per model.
     base_results_dir : str or Path
-        Directory where CSV outputs will be saved (e.g. BASE_RESULTS_DIR).
+        Directory where CSV outputs will be saved.
     batch_index : int
         The batch number (used for filenames and printed headers).
 

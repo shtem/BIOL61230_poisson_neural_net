@@ -37,7 +37,9 @@ def load_batch_results(batch_index, base_models_dir):
     Parameters
     ----------
     batch_index : int
+        The batch number (used for filenames and printed headers).
     base_models_dir : Path
+        Directory where batch folders are located (e.g. BASE_REAL_DIR).
 
     Returns
     -------
