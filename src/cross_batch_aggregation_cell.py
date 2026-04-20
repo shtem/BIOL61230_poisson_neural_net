@@ -13,14 +13,18 @@ import pandas as pd
 from scipy import stats
 from pathlib import Path
 import pickle
+import sys
+import os
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 # ── config ─────────────────────────────────────────────────────────────────
 # Set this to the parent directory containing your batch_0, batch_1, etc. folders
-BASE_REAL_DIR = Path("../resources/models/real")
-BASE_RESULTS_DIR = Path("../resources/results/real")
+BASE_REAL_DIR = Path("resources/models/real")
+BASE_RESULTS_DIR = Path("resources/results/real")
 
-# Which batches to include — update as more complete
-COMPLETED_BATCHES = [0, 1]  # add 2, 3 as they finish
+# Which batches to include
+COMPLETED_BATCHES = [0, 1, 2, 3]
 
 # ── load per-batch result tables ───────────────────────────────────────────
 
@@ -141,7 +145,7 @@ for m, row in summary.iterrows():
         f"{row['iqr_lo']:>7.4f} "
         f"{row['iqr_hi']:>7.4f} "
         f"{row['pct_above_chance']:>5.0f}% "
-        f"{row['n_above_chance']:>5d}"
+        f"{int(row['n_above_chance']):>5d}"
     )
 
 
