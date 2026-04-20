@@ -1,0 +1,46 @@
+Batch 3 Log File
+Created: 2026-04-14 13:52:01.705454
+============================================================
+
+Running batch 4/10
+Cells in this batch: [ 76  77  78  79  80  81  82  83  84  85  86  87  88  89  90  91  92  93
+  94  95  96  97  98  99 100]
+Filtered dataset shape: (14, 173250) (173250,)
+Unique cells in this batch: [ 76  77  78  79  80  81  82  83  84  85  86  87  88  89  90  91  92  93
+  94  95  96  97  98  99 100]
+Running batch 4/10
+Cells in this batch: [ 76  77  78  79  80  81  82  83  84  85  86  87  88  89  90  91  92  93
+  94  95  96  97  98  99 100]
+Filtered dataset shape: (14, 173250) (173250,)
+Unique cells in this batch: [ 76  77  78  79  80  81  82  83  84  85  86  87  88  89  90  91  92  93
+  94  95  96  97  98  99 100]
+Running batch 4/10
+Cells in this batch: [ 76  77  78  79  80  81  82  83  84  85  86  87  88  89  90  91  92  93
+  94  95  96  97  98  99 100]
+Filtered dataset shape: (14, 173250) (173250,)
+Unique cells in this batch: [ 76  77  78  79  80  81  82  83  84  85  86  87  88  89  90  91  92  93
+  94  95  96  97  98  99 100]
+Running batch 4/10
+Cells in this batch: [ 76  77  78  79  80  81  82  83  84  85  86  87  88  89  90  91  92  93
+  94  95  96  97  98  99 100]
+Filtered dataset shape: (14, 173250) (173250,)
+Unique cells in this batch: [ 76  77  78  79  80  81  82  83  84  85  86  87  88  89  90  91  92  93
+  94  95  96  97  98  99 100]
+Generated 7 plots
+  ..\resources\results\real\batch_3\journal\r2_line.png
+  ..\resources\results\real\batch_3\journal\pairwise_GLM_vs_NN-PerCell-MLP.png
+  ..\resources\results\real\batch_3\journal\pairwise_GLM_vs_NN-DeepSharedDeepHead-TL-MLP.png
+  ..\resources\results\real\batch_3\journal\pairwise_NN-PerCell-MLP_vs_NN-DeepSharedDeepHead-TL-MLP.png
+  ..\resources\results\real\batch_3\journal\cell_90.png
+Running batch 4/10
+Cells in this batch: [ 76  77  78  79  80  81  82  83  84  85  86  87  88  89  90  91  92  93
+  94  95  96  97  98  99 100]
+Filtered dataset shape: (14, 173250) (173250,)
+Unique cells in this batch: [ 76  77  78  79  80  81  82  83  84  85  86  87  88  89  90  91  92  93
+  94  95  96  97  98  99 100]
+Generated 7 plots
+  ..\resources\results\real\batch_3\journal\r2_line.png
+  ..\resources\results\real\batch_3\journal\pairwise_GLM_vs_NN-PerCell-MLP.png
+  ..\resources\results\real\batch_3\journal\pairwise_GLM_vs_NN-DeepSharedDeepHead-TL-MLP.png
+  ..\resources\results\real\batch_3\journal\pairwise_NN-PerCell-MLP_vs_NN-DeepSharedDeepHead-TL-MLP.png
+  ..\resources\results\real\batch_3\journal\cell_90.png

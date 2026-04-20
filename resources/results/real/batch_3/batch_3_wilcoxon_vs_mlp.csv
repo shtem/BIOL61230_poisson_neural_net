@@ -1,0 +1,10 @@
+model,statistic,p_value,significant
+NN-DeepSharedShallowHead-TL-MLP,193.0,0.21307098865509033,ns
+NN-DeepSharedShallowHead-TL-CNN,216.0,0.07816910743713379,ns
+NN-DeepSharedShallowHead-TL-RNN,156.0,0.573400229215622,ns
+NN-DeepSharedDeepHead-TL-MLP,204.0,0.1375921368598938,ns
+NN-DeepSharedDeepHead-TL-CNN,201.0,0.156166672706604,ns
+NN-DeepSharedDeepHead-TL-RNN,177.0,0.3555803894996643,ns
+NN-ShallowSharedDeepHead-TL-MLP,200.0,0.162695974111557,ns
+NN-ShallowSharedDeepHead-TL-CNN,163.0,0.5,ns
+NN-ShallowSharedDeepHead-TL-RNN,174.0,0.3855797052383423,ns

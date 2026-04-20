@@ -1,0 +1,64 @@
+Batch 1 Log File
+Created: 2026-04-11 09:08:13.578691
+============================================================
+
+Running batch 2/10
+Cells in this batch: [26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49
+ 50]
+Filtered dataset shape: (14, 155750) (155750,)
+Unique cells in this batch: [26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49
+ 50]
+Running batch 2/10
+Cells in this batch: [26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49
+ 50]
+Filtered dataset shape: (14, 155750) (155750,)
+Unique cells in this batch: [26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49
+ 50]
+Generated 7 plots
+  ..\resources\results\real\batch_1\journal\r2_line.png
+  ..\resources\results\real\batch_1\journal\pairwise_GLM_vs_NN-PerCell-MLP.png
+  ..\resources\results\real\batch_1\journal\pairwise_GLM_vs_NN-DeepSharedDeepHead-TL-MLP.png
+  ..\resources\results\real\batch_1\journal\pairwise_NN-PerCell-MLP_vs_NN-DeepSharedDeepHead-TL-MLP.png
+  ..\resources\results\real\batch_1\journal\cell_30.png
+Running batch 2/10
+Cells in this batch: [26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49
+ 50]
+Filtered dataset shape: (14, 155750) (155750,)
+Unique cells in this batch: [26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49
+ 50]
+Running batch 2/10
+Cells in this batch: [26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49
+ 50]
+Filtered dataset shape: (14, 155750) (155750,)
+Unique cells in this batch: [26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49
+ 50]
+Generated 7 plots
+  ..\resources\results\real\batch_1\journal\r2_line.png
+  ..\resources\results\real\batch_1\journal\pairwise_GLM_vs_NN-PerCell-MLP.png
+  ..\resources\results\real\batch_1\journal\pairwise_GLM_vs_NN-DeepSharedDeepHead-TL-MLP.png
+  ..\resources\results\real\batch_1\journal\pairwise_NN-PerCell-MLP_vs_NN-DeepSharedDeepHead-TL-MLP.png
+  ..\resources\results\real\batch_1\journal\cell_30.png
+Running batch 2/10
+Cells in this batch: [26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49
+ 50]
+Filtered dataset shape: (14, 155750) (155750,)
+Unique cells in this batch: [26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49
+ 50]
+Running batch 2/10
+Cells in this batch: [26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49
+ 50]
+Filtered dataset shape: (14, 155750) (155750,)
+Unique cells in this batch: [26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49
+ 50]
+Running batch 2/10
+Cells in this batch: [26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49
+ 50]
+Filtered dataset shape: (14, 155750) (155750,)
+Unique cells in this batch: [26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49
+ 50]
+Generated 7 plots
+  ..\resources\results\real\batch_1\journal\r2_line.png
+  ..\resources\results\real\batch_1\journal\pairwise_GLM_vs_NN-PerCell-MLP.png
+  ..\resources\results\real\batch_1\journal\pairwise_GLM_vs_NN-DeepSharedDeepHead-TL-MLP.png
+  ..\resources\results\real\batch_1\journal\pairwise_NN-PerCell-MLP_vs_NN-DeepSharedDeepHead-TL-MLP.png
+  ..\resources\results\real\batch_1\journal\cell_30.png
