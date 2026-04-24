@@ -1,10 +1,8 @@
 """
-Cross-Batch Aggregation Cell
-=============================
-Add this as a SEPARATE notebook (or a final cell in any batch notebook)
-once you have completed multiple batches. It loads the CSV files saved
-by statistical_analysis_cell.py and produces combined statistics across
-all completed batches.
+Cross-Batch Aggregation and Final Reporting
+============================================
+It loads the CSV files saved by batch_statistical_analysis.py
+and produces combined statistics across all completed batches.
 """
 
 # ── imports ────────────────────────────────────────────────────────────────
