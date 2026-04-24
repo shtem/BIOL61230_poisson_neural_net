@@ -1,10 +1,6 @@
 """
-Statistical Analysis Cell
-=========================
-Add this as a new cell at the end of each batch notebook, after the
-model_results_gs list has been built and the data_rows / df_test_perf_gs
-table has been computed.
-
+Batch Statistical Analysis
+==========================
 It produces:
   1. Complete per-model summary table (median, mean, IQR, % above chance)
   2. Wilcoxon signed-rank tests: every model vs GLM
