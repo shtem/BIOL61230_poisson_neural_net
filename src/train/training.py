@@ -197,13 +197,13 @@ def run_experiment(
     # ------------------------------------------------------------
     # 0. Check for existing saved model
     # ------------------------------------------------------------
-    bm = Path(base_models_dir or "resources/models")
-    bm.mkdir(parents=True, exist_ok=True)
-    model_path = bm / f"{model_name}.pkl"
+    models_dir = Path(base_models_dir or "resources/models")
+    models_dir.mkdir(parents=True, exist_ok=True)
+    model_path = models_dir / f"{model_name}.pkl"
 
     if model_path.exists() and not force:
         print(f"[run_experiment] Loading cached results from {model_path}")
-        return load_model(model_name, base_dir=bm)
+        return load_model(model_name, base_dir=models_dir)
 
     # ------------------------------------------------------------
     # 1. Fit model (no cache or force=True)
@@ -256,9 +256,11 @@ def run_experiment(
             model = res["results"][first]["model"]
 
             if isinstance(model, torch.nn.Module):
-                br = Path(base_results_dir or "resources/results")
+                results_dir = Path(base_results_dir or "resources/results")
                 try:
-                    arch_path = plot_nn_architecture(model, model_name, base_dir=br)
+                    arch_path = plot_nn_architecture(
+                        model, model_name, base_dir=results_dir
+                    )
                     if arch_path is not None:
                         print(f"Architecture diagram saved to {arch_path}")
                 except Exception as exc:
@@ -270,16 +272,16 @@ def run_experiment(
     # 4. Save model/results
     # ------------------------------------------------------------
     if save_models:
-        save_model(res, model_name, base_dir=bm)
+        save_model(res, model_name, base_dir=models_dir)
 
     # ------------------------------------------------------------
     # 5. Save plots
     # ------------------------------------------------------------
     if plot and (fig1 is not None or fig2 is not None):
-        br = Path(base_results_dir or "resources/results")
+        results_dir = Path(base_results_dir or "resources/results")
         if fig1 is not None:
-            save_plot(fig1, model_name, "train_losses.png", base_dir=br)
+            save_plot(fig1, model_name, "train_losses.png", base_dir=results_dir)
         if fig2 is not None:
-            save_plot(fig2, model_name, "ytrue_vs_ypred.png", base_dir=br)
+            save_plot(fig2, model_name, "ytrue_vs_ypred.png", base_dir=results_dir)
 
     return res
