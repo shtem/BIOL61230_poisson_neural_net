@@ -42,9 +42,6 @@ def load_data(path, filenames=None):
         if X.shape[0] > X.shape[1]:  # real data is (bins, features)
             X = X.T
 
-        # Impute nan values in X with column means (features are columns after transpose)
-        imp = SimpleImputer(strategy="mean")
-        X = imp.fit_transform(X.T).T
         return X, Y, cell_ids, rec_ids
 
     # -----------------------------------
@@ -88,9 +85,6 @@ def load_data(path, filenames=None):
     Y_all = np.concatenate(Y_list)
     cell_ids_all = np.concatenate(cell_ids_list)
     rec_ids_all = np.concatenate(rec_ids_list)
-
-    imp = SimpleImputer(strategy="mean")
-    X_all = imp.fit_transform(X_all.T).T
 
     return X_all, Y_all, cell_ids_all, rec_ids_all
 
@@ -251,6 +245,12 @@ def prepare_cellwise_datasets(
         ``use_val`` is False.
     """
     splits = split_cell_data(cell_ids, train_frac, val_frac, use_val)
+
+    # Fit imputer on training bins only, then apply to the full array
+    all_train_idx = np.concatenate([s["train_idx"] for s in splits.values()])
+    imp = SimpleImputer(strategy="mean")
+    imp.fit(X[:, all_train_idx].T)
+    X = imp.transform(X.T).T
 
     X_train = {}
     X_val = {}

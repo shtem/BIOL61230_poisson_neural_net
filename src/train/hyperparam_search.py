@@ -77,15 +77,13 @@ def prepare_fixed_cv_splits(cell_ids, k_folds, seed=42):
         where indices are global sample indices corresponding to the original
         dataset.
     """
-    rng = np.random.RandomState(seed)
     unique_cells = np.unique(cell_ids)
     cv_splits = {}
 
     for cell in unique_cells:
         idx = get_cell_slice(cell, cell_ids)
 
-        # Deterministic KFold
-        kf = KFold(n_splits=k_folds, shuffle=True, random_state=seed)
+        kf = KFold(n_splits=k_folds, shuffle=False)
 
         splits = []
         for train_local, val_local in kf.split(idx):
