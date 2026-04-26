@@ -8,6 +8,7 @@ from sklearn.linear_model import PoissonRegressor
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import silhouette_score
 from scipy.cluster.hierarchy import linkage, dendrogram, fcluster
+from src.get_data import get_cell_slice
 
 
 # -----------------------------
@@ -40,7 +41,7 @@ def extract_corr_features(X, Y, cell_ids):
     """
     features = []
     for cell in np.unique(cell_ids):
-        idx = np.where(cell_ids == cell)[0]
+        idx = get_cell_slice(cell, cell_ids)
         y_cell = Y[idx]
         x_cell = X[:, idx]
 
@@ -74,7 +75,7 @@ def extract_glm_features(X, Y, cell_ids):
     """
     features = []
     for cell in np.unique(cell_ids):
-        idx = np.where(cell_ids == cell)[0]
+        idx = get_cell_slice(cell, cell_ids)
         y_cell = Y[idx]
         x_cell = X[:, idx].T  # transpose for sklearn's convention
 

@@ -7,6 +7,18 @@ from src.train.utils import _to_tensor
 # Base classes and utilities
 
 
+def _build_mlp_head(in_dim, hidden_sizes):
+    """Build a per-cell MLP head ending in a Softplus output layer."""
+    layers = []
+    for h in hidden_sizes:
+        layers.append(nn.Linear(in_dim, h))
+        layers.append(nn.ReLU())
+        in_dim = h
+    layers.append(nn.Linear(in_dim, 1))
+    layers.append(nn.Softplus())
+    return nn.Sequential(*layers)
+
+
 class BasePoissonModel(nn.Module, ABC):
     """
     Abstract base class for Poisson neural network models.
@@ -665,17 +677,9 @@ class DeepSharedDeepHeadPoissonNN(BasePoissonModel):
             shared_dim = shared_sizes[-1]
 
         # Per-cell nonlinear heads
-        self.heads = nn.ModuleList()
-        for _ in range(n_cells):
-            layers = []
-            in_dim = shared_dim
-            for h in head_sizes:
-                layers.append(nn.Linear(in_dim, h))
-                layers.append(nn.ReLU())
-                in_dim = h
-            layers.append(nn.Linear(in_dim, 1))
-            layers.append(nn.Softplus())
-            self.heads.append(nn.Sequential(*layers))
+        self.heads = nn.ModuleList(
+            [_build_mlp_head(shared_dim, head_sizes) for _ in range(n_cells)]
+        )
 
     def forward(self, X, cell_idx):
         h = self.shared(X)
@@ -742,17 +746,9 @@ class ShallowSharedDeepHeadPoissonNN(BasePoissonModel):
             self.shared = nn.Sequential(nn.Linear(n_features, shared_dim), nn.ReLU())
 
         # Per-cell MLP heads
-        self.heads = nn.ModuleList()
-        for _ in range(n_cells):
-            layers = []
-            in_dim = shared_dim
-            for h in head_sizes:
-                layers.append(nn.Linear(in_dim, h))
-                layers.append(nn.ReLU())
-                in_dim = h
-            layers.append(nn.Linear(in_dim, 1))
-            layers.append(nn.Softplus())
-            self.heads.append(nn.Sequential(*layers))
+        self.heads = nn.ModuleList(
+            [_build_mlp_head(shared_dim, head_sizes) for _ in range(n_cells)]
+        )
 
     def forward(self, X, cell_idx):
         h = self.shared(X)
