@@ -106,7 +106,7 @@ n_cells = len(df_combined)
 model_cols = [c for c in df_combined.columns if c != "cell"]
 
 print(f"\nCombined dataset: {n_cells} cells, {len(model_cols)} models")
-print(f"Cell IDs: {df_combined['cell'].min()} – {df_combined['cell'].max()}")
+print(f"Cell IDs: {df_combined['cell'].min()} - {df_combined['cell'].max()}")
 
 
 # ── combined summary statistics ─────────────────────────────────────────────

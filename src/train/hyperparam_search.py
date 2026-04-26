@@ -2,9 +2,8 @@ import torch
 import itertools
 import numpy as np
 from sklearn.model_selection import KFold
-from src.train.utils import _to_tensor
 from src.train.evaluate import pseudo_r2
-from src.get_data import prepare_cellwise_datasets
+from src.get_data import get_cell_slice, prepare_cellwise_datasets
 from src.train.poisson_nn.nn_training import TransferLearningTrainer
 
 # Add device handling at top
@@ -83,9 +82,7 @@ def prepare_fixed_cv_splits(cell_ids, k_folds, seed=42):
     cv_splits = {}
 
     for cell in unique_cells:
-        # Extract indices for this cell
-        cell_mask = cell_ids == cell
-        idx = np.where(cell_mask)[0]
+        idx = get_cell_slice(cell, cell_ids)
 
         # Deterministic KFold
         kf = KFold(n_splits=k_folds, shuffle=True, random_state=seed)
@@ -165,13 +162,9 @@ def cross_validate_model_per_cell(
         if verbose:
             print(f"Cross-validating cell {cell}")
 
-        # Extract per-cell data
-        cell_mask = cell_ids == cell
-        Xc = X[:, cell_mask].T
-        yc = Y[cell_mask]
-
-        # Global → local index mapping
-        global_idx = np.where(cell_mask)[0]
+        global_idx = get_cell_slice(cell, cell_ids)
+        Xc = X[:, global_idx].T
+        yc = Y[global_idx]
 
         fold_scores = []
 

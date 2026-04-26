@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 from pathlib import Path
 from torchview import draw_graph
-from itertools import combinations
+from src.get_data import get_trial_slice
 
 
 def _set_journal_style():
@@ -734,7 +734,7 @@ def plot_covariate_trial(
     bin_duration_ms : int, optional
         Duration of each time bin in milliseconds. Default 50 ms.
     highlight_motion : bool, optional
-        If ``True``, shade the motion covariate panels (indices 0–4) with a
+        If ``True``, shade the motion covariate panels (indices 0-4) with a
         very light background to visually group them. Default ``True``.
     figsize : tuple or None, optional
         Override figure size. Default scales with number of features.
@@ -749,31 +749,10 @@ def plot_covariate_trial(
     matplotlib.figure.Figure
         Figure with n_features + 1 stacked panels sharing the x-axis.
 
-    Examples
-    --------
-    >>> from src.visualisation import (
-    ...     plot_covariate_trial, COVARIATE_NAMES_REAL
-    ... )
-    >>> fig = plot_covariate_trial(
-    ...     X, Y, cell_ids,
-    ...     cell_idx=1, trial_idx=10,
-    ...     covariate_names=COVARIATE_NAMES_REAL,
-    ... )
-    >>> fig.savefig("figure1_covariate_trial.pdf", dpi=300, bbox_inches="tight")
     """
     _set_journal_style()
 
-    # --- locate the trial slice ---
-    cell_mask = cell_ids == cell_idx
-    cell_global_idx = np.where(cell_mask)[0]
-
-    n_bins_cell = len(cell_global_idx)
-    bins_per_trial = n_bins_cell // trials_per_cell
-
-    # start index of this trial within the global array
-    start = cell_global_idx[0] + trial_idx * bins_per_trial
-    end = start + bins_per_trial
-    trial_slice = slice(start, end)
+    trial_slice = get_trial_slice(cell_idx, trial_idx, cell_ids, trials_per_cell)
 
     X_trial = X[:, trial_slice]  # (n_features, bins_per_trial)
     Y_trial = Y[trial_slice]  # (bins_per_trial,)

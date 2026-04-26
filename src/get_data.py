@@ -197,7 +197,7 @@ def split_cell_data(cell_ids, train_frac=0.7, val_frac=0.15, use_val=True):
     splits = {}
 
     for cell in unique_cells:
-        idx = np.where(cell_ids == cell)[0]
+        idx = get_cell_slice(cell, cell_ids)
         n = len(idx)
 
         n_train = int(train_frac * n)
