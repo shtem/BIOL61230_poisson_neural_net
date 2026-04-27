@@ -23,7 +23,7 @@ Visual stimuli and 3D body-tracking covariates (position, velocity, tilt) record
 | NN-DeepSharedDeepHead-TL-{MLP,CNN,RNN} | Shared deep extractor + deep per-cell output head |
 | NN-ShallowSharedDeepHead-TL-{MLP,CNN,RNN} | Shared shallow extractor + deep per-cell output head |
 
-Transfer-learning (TL) models share a feature extractor across all cells and attach a separate output head per cell. The three extractor types (MLP, CNN, RNN) and three head-depth combinations give 9 TL variants.
+Transfer-learning (TL) models share a single feature extractor across all cells and attach a separate output head per cell. The three extractor types (MLP, CNN, RNN) and three head-depth combinations give 9 TL variants. All models output Poisson-distributed spike counts via a Softplus activation on the final layer.
 
 ---
 
@@ -55,12 +55,12 @@ notebooks/
   neural_network_real_batch{0-3}.ipynb   — Per-batch training on real dLGN data
   results_figures.ipynb                  — Generates all dissertation figures
   results_verification.ipynb             — Sanity checks on saved results
-  data_playbook.ipynb                    — Data exploration
+  data_playbook.ipynb                    — Data exploration and cell clustering
 
 resources/
   data/
     simulated/             — Synthetic .mat files
-    real/                  — Real .mat file
+    real/                  — real_data.mat
   models/
     simulated/             — Fitted model pickles (.pkl)
     real/batch_{0-3}/      — Per-batch model pickles
@@ -75,11 +75,23 @@ resources/
 
 ## Data
 
-**Real data** (`Temi_Data.mat`, gitignored): 100 dLGN cells recorded across two sessions. Covariates include visual stimulus parameters and 3D body-tracking signals. Training uses a temporal 70 / 15 / 15 train / val / test split per cell to preserve time-series structure. NaN values from 3D tracking failures are imputed (mean strategy) using only training-bin statistics.
+**Real data** (`resources/data/real/real_data.mat`): 100 dLGN cells recorded across two sessions. The full `.mat` file contains 247 cells and 5 recordings; only cells 1–100 are used for model training. Covariates include visual stimulus parameters (orientation, ON/OFF responses) and 3D body-tracking signals (tilt, angular and linear head speed). The full covariate list is defined in `COVARIATE_NAMES_REAL` in `src/visualisation.py`.
 
-**Simulated data** (`resources/data/simulated/`): Four synthetic datasets used to validate the full pipeline before running on real recordings.
+**Simulated data** (`resources/data/simulated/`): Four synthetic datasets (`test1–4.mat`) with 5 cells each and known ground-truth spike rates, used to validate the full pipeline end-to-end before running on real recordings.
 
-Cells are processed in four batches of 25:
+### Data splits
+
+All splits are **temporal** (no shuffling) to preserve the time-series structure of spike trains:
+
+| Split | Fraction | Purpose |
+|---|---|---|
+| Train | 70% | Model fitting |
+| Val | 15% | Early stopping and hyperparameter selection |
+| Test | 15% | Final evaluation only |
+
+NaN values (from 3D tracking failures) are imputed using a mean strategy. The imputer is fitted on training bins only to prevent data leakage.
+
+### Batch breakdown
 
 | Batch | Cells | Session |
 |---|---|---|
@@ -96,19 +108,20 @@ Cells are processed in four batches of 25:
 pip install -r requirements.txt
 ```
 
-Requires Python 3.10+. GPU training is supported automatically if CUDA is available.
+Requires Python 3.10+. GPU training is supported automatically when CUDA is available — the device is resolved once at import time in `src/train/utils.py`.
 
 ---
 
 ## Running the Pipeline
 
-**Simulated data (end-to-end validation):**
+**1. Validate on simulated data (optional but recommended first):**
 
 Open and run `notebooks/neural_network_simulated.ipynb`.
 
-**Real data (per-batch training):**
+**2. Train on real data (per-batch):**
 
-Run each batch notebook in order:
+Run each batch notebook in order. They are independent and can be run in separate sessions:
+
 ```
 notebooks/neural_network_real_batch0.ipynb
 notebooks/neural_network_real_batch1.ipynb
@@ -116,23 +129,32 @@ notebooks/neural_network_real_batch2.ipynb
 notebooks/neural_network_real_batch3.ipynb
 ```
 
-Each notebook saves fitted models to `resources/models/real/batch_{N}/` and per-model diagnostic plots to `resources/results/real/batch_{N}/`. Completed models are cached — re-running a cell with an existing `.pkl` loads from cache rather than refitting.
+Each notebook saves fitted models to `resources/models/real/batch_{N}/` as `.pkl` files and writes diagnostic plots to `resources/results/real/batch_{N}/`. **Models are cached** — re-running a cell skips training if the `.pkl` already exists. To force retraining, set `FORCE_EXPERIMENTS = True` at the top of the notebook.
 
-**Cross-batch statistics:**
+**3. Aggregate statistics across all batches:**
 
-After all four batches are complete, run:
 ```bash
 python src/stats/cross_batch_statistics_aggregation.py
 ```
 
-This produces combined summary tables and Wilcoxon signed-rank test results in `resources/results/real/combined/`.
+Reads the per-batch `.pkl` files and writes combined summary CSVs and Wilcoxon test tables to `resources/results/real/combined/`.
 
-**Dissertation figures:**
+**4. Generate dissertation figures:**
 
 Open and run `notebooks/results_figures.ipynb`. All figures are saved as PNG (300 DPI) and PDF to `resources/results/figures/`.
 
 ---
 
+## Key Design Decisions
+
+**Hyperparameter search:** Grid search is run per cell for GLM, XGBoost, and per-cell NNs; a single shared grid search (aggregated across cells by median pseudo-R²) is used for TL models, since their shared extractor must be trained on all cells jointly.
+
+**Transfer learning training:** The shared extractor and all cell heads are trained end-to-end in a single pass. Each batch presents all cells; gradients flow through both shared and head components simultaneously.
+
+**Model caching:** `run_experiment()` checks for an existing `.pkl` before fitting. This makes it safe to re-run notebooks after interruptions without losing completed work.
+
+---
+
 ## Statistical Analysis
 
-Model comparisons use one-sided Wilcoxon signed-rank tests (alternative: model > baseline) applied to per-cell pseudo-R² distributions. No multiple-testing correction is applied: hypotheses are pre-specified, directional, and the tests are correlated (same cells).
+Model comparisons use one-sided Wilcoxon signed-rank tests (alternative: model > baseline) applied to per-cell pseudo-R² distributions. No multiple-testing correction is applied: hypotheses are pre-specified, directional, and the tests are correlated across models (same 100 cells).

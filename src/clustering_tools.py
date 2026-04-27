@@ -319,7 +319,7 @@ def summarise_clusters(features, labels):
     return summaries
 
 
-def plot_cluster_tuning(features, labels, title_prefix="Cluster"):
+def plot_cluster_tuning(features, labels, title_prefix="Cluster", covariate_names=None):
     """
     Visualise average feature responses for each cluster.
 
@@ -332,6 +332,8 @@ def plot_cluster_tuning(features, labels, title_prefix="Cluster"):
     labels : ndarray, shape (n_cells,)
     title_prefix : str
         Prefix for plot title.
+    covariate_names : list of str or None
+        Names for each feature. If None, generic ``Cov 0, Cov 1...`` labels are used.
 
     Returns
     -------
@@ -340,25 +342,31 @@ def plot_cluster_tuning(features, labels, title_prefix="Cluster"):
     """
     n_features = features.shape[1]
     clusters = np.unique(labels)
+    tick_labels = (
+        covariate_names
+        if covariate_names is not None
+        else [f"Cov {i}" for i in range(n_features)]
+    )
     figs = []
 
     for c in clusters:
         mean_vec = features[labels == c].mean(axis=0)
 
-        fig, ax = plt.subplots(figsize=(6, 4))
+        fig, ax = plt.subplots(figsize=(8, 4))
         ax.bar(range(n_features), mean_vec)
         ax.set_xticks(range(n_features))
-        ax.set_xticklabels([f"Cov {i}" for i in range(n_features)])
+        ax.set_xticklabels(tick_labels, rotation=45, ha="right", fontsize=9)
         ax.set_ylabel("Mean feature value")
         ax.set_title(f"{title_prefix} {c} tuning profile")
         ax.grid(alpha=0.3)
+        fig.tight_layout()
 
         figs.append(fig)
 
     return figs
 
 
-def suggest_labels(cluster_summaries):
+def suggest_labels(cluster_summaries, covariate_names=None):
     """
     Generate textual descriptions of each cluster's dominant feature.
 
@@ -370,6 +378,8 @@ def suggest_labels(cluster_summaries):
     ----------
     cluster_summaries : dict
         Mapping cluster label to mean feature vector.
+    covariate_names : list of str or None
+        Names for each feature. If None, generic ``Covariate N`` labels are used.
 
     Returns
     -------
@@ -380,7 +390,12 @@ def suggest_labels(cluster_summaries):
     for c, vec in cluster_summaries.items():
         strongest = np.argmax(np.abs(vec))
         direction = "positive" if vec[strongest] > 0 else "negative"
-        labels[c] = f"Strongly tuned to Covariate {strongest} ({direction})"
+        name = (
+            covariate_names[strongest]
+            if covariate_names is not None
+            else f"Covariate {strongest}"
+        )
+        labels[c] = f"Strongly tuned to {name} ({direction})"
     return labels
 
 
@@ -453,7 +468,9 @@ def print_cluster_membership(labels, cell_ids):
     return mapping
 
 
-def cluster_report(features, labels, cell_ids, title_prefix="Cluster"):
+def cluster_report(
+    features, labels, cell_ids, title_prefix="Cluster", covariate_names=None
+):
     """
     Produce a full textual and graphical summary of clustering results.
 
@@ -468,6 +485,9 @@ def cluster_report(features, labels, cell_ids, title_prefix="Cluster"):
     cell_ids : ndarray, shape (n_cells,)
     title_prefix : str
         Prefix for report titles.
+    covariate_names : list of str or None
+        Names for each feature used in tuning profile plots and suggested labels.
+        If None, generic ``Cov N`` labels are used.
 
     Returns
     -------
@@ -481,8 +501,10 @@ def cluster_report(features, labels, cell_ids, title_prefix="Cluster"):
     score = evaluate_clustering(features, labels)
     mapping = print_cluster_membership(labels, cell_ids)
     summaries = summarise_clusters(features, labels)
-    tuning_figs = plot_cluster_tuning(features, labels, title_prefix)
-    suggested = suggest_labels(summaries)
+    tuning_figs = plot_cluster_tuning(
+        features, labels, title_prefix, covariate_names=covariate_names
+    )
+    suggested = suggest_labels(summaries, covariate_names=covariate_names)
 
     print(f"Silhouette score: {score:.3f}")
 

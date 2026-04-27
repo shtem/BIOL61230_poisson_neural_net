@@ -1,11 +1,3 @@
-"""
-Cross-Batch Aggregation and Final Reporting
-============================================
-It loads the CSV files saved by stats/batch_statistical_analysis.py
-and produces combined statistics across all completed batches.
-"""
-
-# ── imports ────────────────────────────────────────────────────────────────
 import numpy as np
 import pandas as pd
 from scipy import stats
@@ -16,15 +8,12 @@ import os
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-# ── config ─────────────────────────────────────────────────────────────────
 # Set this to the parent directory containing your batch_0, batch_1, etc. folders
 BASE_REAL_DIR = Path("resources/models/real")
 BASE_RESULTS_DIR = Path("resources/results/real")
 
 # Which batches to include
 COMPLETED_BATCHES = [0, 1, 2, 3]
-
-# ── load per-batch result tables ───────────────────────────────────────────
 
 
 def load_batch_results(batch_index, base_models_dir):
