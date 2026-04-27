@@ -1,24 +1,7 @@
-"""
-Batch Statistical Analysis
-==========================
-It produces:
-  1. Complete per-model summary table (median, mean, IQR, % above chance)
-  2. Wilcoxon signed-rank tests: every model vs GLM
-  3. Wilcoxon signed-rank tests: every TL model vs NN-PerCell-MLP
-  4. Model ranking by combined median
-  5. Batch consistency summary (for cross-batch reporting)
-
-All results are printed to console AND written to a CSV in the batch
-results directory so you can load them later for the combined analysis.
-"""
-
-# ── imports ────────────────────────────────────────────────────────────────
 import numpy as np
 import pandas as pd
 from scipy import stats
 from pathlib import Path
-
-# ── helper ─────────────────────────────────────────────────────────────────
 
 
 def summarise_and_test(df, base_results_dir, batch_index):
